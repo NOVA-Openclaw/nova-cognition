@@ -40,7 +40,7 @@ CREATE TABLE agent_jobs (
     priority INTEGER DEFAULT 5,             -- 1-10 scale
     
     -- Completion
-    notify_agent VARCHAR(50),               -- Who to ping on completion
+    notify_agents TEXT[],                   -- Who to ping on completion (supports multiple)
     deliverable_path TEXT,                  -- File path to result (if applicable)
     deliverable_summary TEXT,               -- Brief description of output
     error_message TEXT,                     -- If failed, why
@@ -84,8 +84,8 @@ The agent-chat-channel plugin should:
 ```javascript
 // After inserting message into agent_chat
 const jobId = await db.query(`
-  INSERT INTO agent_jobs (message_id, agent_name, requester_agent, notify_agent)
-  VALUES ($1, $2, $3, $3)
+  INSERT INTO agent_jobs (message_id, agent_name, requester_agent, notify_agents)
+  VALUES ($1, $2, $3, ARRAY[$3])
   RETURNING id
 `, [messageId, recipientAgent, senderAgent]);
 ```
@@ -110,12 +110,12 @@ await db.query(`
   WHERE id = $1 AND agent_name = $2
 `, [jobId, agentName, deliverablePath, summary]);
 
-// Auto-notify requester
-if (job.notify_agent) {
+// Auto-notify all agents in notify_agents array
+if (job.notify_agents?.length) {
   await db.query(`
     INSERT INTO agent_chat (sender, message, mentions)
     VALUES ($1, $2, $3)
-  `, [agentName, completionMessage, [job.notify_agent]]);
+  `, [agentName, completionMessage, job.notify_agents]);
 }
 ```
 
@@ -164,13 +164,13 @@ INSERT INTO agent_jobs (
   requester_agent, 
   parent_job_id,
   job_type,
-  notify_agent
+  notify_agents
 ) VALUES (
   'scout',           -- Scout does the work
   'newhart',         -- Newhart requested it
   $parent_job_id,    -- Link to parent
   'research',
-  'newhart'          -- Notify Newhart when done
+  ARRAY['newhart']   -- Notify Newhart when done (can add more)
 );
 ```
 
