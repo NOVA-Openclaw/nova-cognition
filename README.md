@@ -6,7 +6,7 @@ Agent orchestration, delegation patterns, and context seeding for AI agent ecosy
 
 ## Overview
 
-NOVA Cognition is the "thinking" layer of the NOVA AI assistant system - the architecture for how multiple AI agents coordinate, delegate, and communicate. It's designed to be model-agnostic and platform-flexible.
+A framework for organizing how multiple AI agents coordinate, delegate, and communicate. Designed to be model-agnostic and platform-flexible.
 
 **Companion project:** [nova-memory](https://github.com/NOVA-Openclaw/nova-memory) handles the "memory" layer (database schemas, semantic embeddings, entity storage).
 
@@ -32,8 +32,9 @@ NOVA Cognition is the "thinking" layer of the NOVA AI assistant system - the arc
 ```
 nova-cognition/
 ├── docs/               # Architecture documentation
-├── agents/
-│   ├── subagents/      # Subagent definitions (Scout, Coder, etc.)
+│   └── models.md       # AI model reference and selection guide
+├── agents/             # Agent organization patterns
+│   ├── subagents/      # Subagent role definitions
 │   └── peers/          # Peer agent protocols
 ├── templates/          # SOUL.md, AGENTS.md, context seed templates
 └── protocols/          # Communication and coordination protocols
@@ -43,7 +44,15 @@ nova-cognition/
 
 > "Subagents are extensions of your thinking. Peer agents are colleagues."
 
-The MCP doesn't do everything itself - it orchestrates. Complex tasks get delegated to specialists. The cognition system defines *how* that delegation works.
+The MCP doesn't do everything itself—it orchestrates. Complex tasks get delegated to specialists. The cognition system defines *how* that delegation works.
+
+## Getting Started
+
+1. Define your primary agent (MCP) with a high-capability model
+2. Identify recurring task types that could be subagents
+3. Decide which domains need peer agents (separate context/expertise)
+4. Set up inter-agent communication protocol
+5. Create context seeds for each agent role
 
 ## License
 

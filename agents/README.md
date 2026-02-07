@@ -1,6 +1,6 @@
 # Agent Registry
 
-Current agents in the NOVA Cognition System.
+How to structure and organize agents in a cognition system.
 
 ## Agent Types
 
@@ -10,37 +10,74 @@ Current agents in the NOVA Cognition System.
 | **peer** | Independent agents with own context | Persistent, separate process |
 | **subagent** | Task-focused extensions of MCP | On-demand or persistent |
 
-## Current Agents
+## Type Details
 
-### Primary Agent
-
-| Nickname | Name | Role | Model |
-|----------|------|------|-------|
-| **NOVA** | nova-main | general | claude-opus-4 |
+### Primary Agent (MCP)
 
 The Master Control Program. Orchestrates all other agents, handles user interaction, manages delegation.
 
+- Single instance per deployment
+- Highest-capability model recommended
+- Maintains conversation context with user
+- Decides when to delegate vs handle directly
+
 ### Peer Agents
 
-| Nickname | Name | Role | Model | Notes |
-|----------|------|------|-------|-------|
-| **Newhart** | nhr-agent | meta | openai/o3-pro | Agent architect, designs and manages other agents |
+Independent agents with their own context windows and persistence.
 
-Peer agents have their own context windows and persistence. Communication via `agent_chat` protocol.
+- Separate processes/instances
+- Communication via messaging protocol (not spawning)
+- Have domain expertise the MCP consults
+- Examples: Agent architect, system administrator, domain specialist
 
 ### Subagents
 
-| Nickname | Name | Role | Model | Persistent |
-|----------|------|------|-------|------------|
-| **Scout** | research-agent | research | gemini-2.5-flash | ❌ |
-| **Coder** | claude-code | coding | claude-sonnet-4-5 | ✅ |
-| **Gidget** | git-agent | git-ops | openai/o4-mini | ❌ |
-| **Athena** | librarian-agent | media-curation | gemini-2.0-flash | ❌ |
-| **IRIS** | iris-artist | creative | claude-sonnet-4 | ❌ |
-| **Ticker** | ticker-agent | portfolio-management | gemini-2.5-flash | ✅ |
-| **Gem** | gemini-cli | quick-qa | gemini-2.0-flash | ❌ |
+Task-focused extensions of the MCP's thinking.
 
-Subagents are extensions of NOVA's thinking—spawned when deeper focus on a specific task is needed.
+- Spawned on-demand or kept persistent
+- Share context inheritance from MCP
+- Return results to MCP for synthesis
+- Examples: Research, coding, git operations, creative work, media curation
+
+## Example Roster Structure
+
+```yaml
+agents:
+  primary:
+    - role: general
+      model: premium-reasoning-model
+      persistent: true
+      
+  peers:
+    - role: meta/architecture
+      model: premium-reasoning-model
+      notes: "Designs and manages other agents"
+      
+  subagents:
+    - role: research
+      model: fast-long-context-model
+      persistent: false
+      
+    - role: coding
+      model: code-specialized-model
+      persistent: true
+      
+    - role: git-ops
+      model: moderate-model
+      persistent: false
+      
+    - role: media-curation
+      model: fast-multimodal-model
+      persistent: false
+      
+    - role: creative
+      model: creative-model
+      persistent: false
+      
+    - role: quick-qa
+      model: fast-cheap-model
+      persistent: false
+```
 
 ## Delegation Patterns
 
@@ -52,7 +89,7 @@ Subagents are extensions of NOVA's thinking—spawned when deeper focus on a spe
 
 ### When to Message a Peer Agent
 
-- Task requires their domain expertise (Newhart for agent architecture)
+- Task requires their domain expertise
 - Decision needs collaborative input
 - Task affects their systems or responsibilities
 
@@ -61,27 +98,34 @@ Subagents are extensions of NOVA's thinking—spawned when deeper focus on a spe
 **Research Task:**
 ```
 User asks complex question
-  → NOVA spawns Scout (research-agent)
-  → Scout researches, returns findings
-  → NOVA synthesizes and responds
+  → MCP spawns research subagent
+  → Subagent researches, returns findings
+  → MCP synthesizes and responds
 ```
 
-**Agent Architecture Change:**
+**Architecture Change:**
 ```
 Need to modify an agent's config
-  → NOVA messages Newhart via agent_chat
-  → Newhart reviews and implements
-  → Newhart confirms completion
+  → MCP messages architecture peer via protocol
+  → Peer reviews and implements
+  → Peer confirms completion
 ```
 
 **Code Change:**
 ```
 Feature needs implementation
-  → NOVA spawns Coder (claude-code)
-  → Coder writes code
-  → NOVA spawns Gidget (git-agent) for commit/push
+  → MCP spawns coding subagent
+  → Subagent writes code
+  → MCP spawns git-ops subagent for commit/push
 ```
+
+## Persistence Guidelines
+
+| Persistent | Use When |
+|------------|----------|
+| ✅ Yes | Agent is used frequently, startup cost is high, maintains important state |
+| ❌ No | Agent is used occasionally, stateless tasks, resource conservation |
 
 ---
 
-*Data sourced from NOVA's `agents` table, maintained by Newhart.*
+*See [models.md](../docs/models.md) for model selection guidance.*
