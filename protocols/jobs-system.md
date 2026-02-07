@@ -34,7 +34,8 @@ CREATE TABLE agent_jobs (
     requester_agent VARCHAR(50),            -- Who requested it (if applicable)
     
     -- Hierarchy
-    parent_job_id INTEGER REFERENCES agent_jobs(id),
+    parent_job_id INTEGER REFERENCES agent_jobs(id),   -- Immediate parent
+    root_job_id INTEGER REFERENCES agent_jobs(id),     -- Original job in pipeline (NULL if this IS root)
     
     -- Status tracking
     status VARCHAR(20) DEFAULT 'pending',   -- pending/in_progress/completed/failed/cancelled
@@ -288,6 +289,69 @@ This creates a job tree:
 Job #1: Create Erato (Newhart) [in_progress]
   └── Job #2: Research authors (Scout) [completed]
   └── Job #3: Design context seed (Newhart) [pending]
+```
+
+## Pipeline Routing
+
+For multi-hop pipelines (A → B → C → D), sufficient context must travel with each job:
+
+### Required Context at Each Hop
+
+| Field | Purpose |
+|-------|---------|
+| `parent_job_id` | Links to immediate parent (for tree structure) |
+| `root_job_id` | Links to original job (for pipeline tracing) |
+| `requester_agent` | Immediate requester (for direct replies) |
+| `notify_agents[]` | Final destination(s) for results |
+| `topic` | Enables message matching at any point in pipeline |
+| `title` | Human-readable job description |
+| `deliverable_path` | Expected output location (if file-based) |
+
+### Example: Research Pipeline
+
+```
+NOVA → Scout → Athena → Newhart → NOVA
+  │       │        │        │
+  │       │        │        └─ Creates agent, notifies NOVA
+  │       │        └─ Curates texts, notifies Newhart
+  │       └─ Researches authors, notifies Athena
+  └─ Initiates "Create literary agent" job
+```
+
+Each sub-job carries:
+```sql
+INSERT INTO agent_jobs (
+  agent_name,           -- Current assignee
+  requester_agent,      -- Who asked me
+  parent_job_id,        -- Root job reference
+  notify_agents,        -- Next hop(s) in pipeline
+  topic,                -- Consistent topic for message matching
+  title                 -- Clear task description
+) VALUES (
+  'athena',
+  'scout',
+  $root_job_id,         -- Always reference the root
+  ARRAY['newhart'],     -- Next in pipeline
+  'erato literary agent authors',
+  'Curate texts for Erato context seed'
+);
+```
+
+### Querying the Full Pipeline
+
+```sql
+-- Get all jobs in a pipeline (recursive)
+WITH RECURSIVE job_tree AS (
+  SELECT id, agent_name, title, status, parent_job_id, 0 as depth
+  FROM agent_jobs WHERE id = $root_job_id
+  
+  UNION ALL
+  
+  SELECT j.id, j.agent_name, j.title, j.status, j.parent_job_id, jt.depth + 1
+  FROM agent_jobs j
+  JOIN job_tree jt ON j.parent_job_id = jt.id
+)
+SELECT * FROM job_tree ORDER BY depth, id;
 ```
 
 ## HEARTBEAT Integration
