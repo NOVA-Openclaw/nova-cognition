@@ -25,7 +25,8 @@ CREATE TABLE agent_jobs (
     id SERIAL PRIMARY KEY,
     
     -- Job identification
-    message_id INTEGER REFERENCES agent_chat(id),
+    title VARCHAR(200),                     -- Short description (extracted or provided)
+    topic TEXT,                             -- Topic/context for message matching
     job_type VARCHAR(50) DEFAULT 'message_response',
     
     -- Ownership
@@ -52,11 +53,41 @@ CREATE TABLE agent_jobs (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Message log for each job (tracks full conversation)
+CREATE TABLE job_messages (
+    id SERIAL PRIMARY KEY,
+    job_id INTEGER NOT NULL REFERENCES agent_jobs(id),
+    message_id INTEGER NOT NULL REFERENCES agent_chat(id),
+    role VARCHAR(20) DEFAULT 'context',     -- 'initial', 'followup', 'response', 'context'
+    added_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Indexes for common queries
 CREATE INDEX idx_jobs_agent ON agent_jobs(agent_name, status);
 CREATE INDEX idx_jobs_requester ON agent_jobs(requester_agent, status);
 CREATE INDEX idx_jobs_parent ON agent_jobs(parent_job_id);
+CREATE INDEX idx_jobs_topic ON agent_jobs(agent_name, topic) WHERE status NOT IN ('completed', 'cancelled');
+CREATE INDEX idx_job_messages ON job_messages(job_id, added_at);
 ```
+
+## Message Threading
+
+Jobs are **conversation threads**, not 1:1 with messages:
+
+- **New topic** → Creates new job with initial message
+- **Related followup** → Appends to existing job's message log
+- **Topic matching** uses `topic` field (substring match, could use embeddings)
+
+### Message Roles
+
+| Role | Description |
+|------|-------------|
+| `initial` | First message that created the job |
+| `followup` | Additional context/questions from requester |
+| `response` | Agent's replies during job processing |
+| `context` | Related messages added for reference |
+
+This prevents job fragmentation — a multi-message conversation stays as one trackable unit.
 
 ## Job Types
 
@@ -81,13 +112,77 @@ pending → cancelled
 The agent-chat-channel plugin should:
 
 ### On Message Receipt
+
+Messages don't always create new jobs. The plugin should:
+1. Check for active jobs with matching topic/context
+2. If match found → add message to existing job's log
+3. If no match → create new job
+
 ```javascript
 // After inserting message into agent_chat
-const jobId = await db.query(`
-  INSERT INTO agent_jobs (message_id, agent_name, requester_agent, notify_agents)
-  VALUES ($1, $2, $3, ARRAY[$3])
-  RETURNING id
-`, [messageId, recipientAgent, senderAgent]);
+async function routeMessageToJob(messageId, recipientAgent, senderAgent, messageText) {
+  
+  // 1. Look for active jobs from same requester with matching topic
+  const existingJob = await db.query(`
+    SELECT j.id, j.topic 
+    FROM agent_jobs j
+    WHERE j.agent_name = $1 
+      AND j.requester_agent = $2
+      AND j.status IN ('pending', 'in_progress')
+      AND (
+        -- Topic match (simple substring for now, could use embeddings)
+        j.topic IS NOT NULL AND $3 ILIKE '%' || j.topic || '%'
+      )
+    ORDER BY j.updated_at DESC
+    LIMIT 1
+  `, [recipientAgent, senderAgent, messageText]);
+  
+  let jobId;
+  
+  if (existingJob.rows.length > 0) {
+    // 2. Add to existing job's message log
+    jobId = existingJob.rows[0].id;
+    await db.query(`
+      INSERT INTO job_messages (job_id, message_id, role)
+      VALUES ($1, $2, 'followup')
+    `, [jobId, messageId]);
+    
+    // Touch the job's updated_at
+    await db.query(`
+      UPDATE agent_jobs SET updated_at = NOW() WHERE id = $1
+    `, [jobId]);
+    
+  } else {
+    // 3. Create new job
+    const result = await db.query(`
+      INSERT INTO agent_jobs (agent_name, requester_agent, notify_agents, topic, title)
+      VALUES ($1, $2, ARRAY[$2], $3, $4)
+      RETURNING id
+    `, [recipientAgent, senderAgent, extractTopic(messageText), extractTitle(messageText)]);
+    
+    jobId = result.rows[0].id;
+    
+    // Log the initial message
+    await db.query(`
+      INSERT INTO job_messages (job_id, message_id, role)
+      VALUES ($1, $2, 'initial')
+    `, [jobId, messageId]);
+  }
+  
+  return jobId;
+}
+
+// Simple topic extraction (could be enhanced with LLM)
+function extractTopic(text) {
+  // Extract key nouns/phrases, or use first N chars
+  return text.substring(0, 100).toLowerCase();
+}
+
+function extractTitle(text) {
+  // First sentence or first 50 chars
+  const firstSentence = text.split(/[.!?]/)[0];
+  return firstSentence.substring(0, 100);
+}
 ```
 
 ### Job Status Updates
@@ -123,22 +218,32 @@ if (job.notify_agents?.length) {
 
 ### Check My Pending Jobs
 ```sql
-SELECT id, job_type, requester_agent, created_at, 
-       (SELECT LEFT(message, 100) FROM agent_chat WHERE id = message_id) as context
-FROM agent_jobs 
-WHERE agent_name = 'newhart' 
-  AND status IN ('pending', 'in_progress')
-ORDER BY priority DESC, created_at;
+SELECT j.id, j.title, j.job_type, j.requester_agent, j.created_at,
+       (SELECT COUNT(*) FROM job_messages WHERE job_id = j.id) as message_count
+FROM agent_jobs j
+WHERE j.agent_name = 'newhart' 
+  AND j.status IN ('pending', 'in_progress')
+ORDER BY j.priority DESC, j.updated_at DESC;
+```
+
+### Get Full Message Log for a Job
+```sql
+SELECT jm.role, ac.sender, ac.message, ac.created_at
+FROM job_messages jm
+JOIN agent_chat ac ON ac.id = jm.message_id
+WHERE jm.job_id = $1
+ORDER BY jm.added_at;
 ```
 
 ### Check Jobs I'm Waiting On
 ```sql
-SELECT j.id, j.agent_name as assigned_to, j.status, j.created_at,
-       j.deliverable_summary
+SELECT j.id, j.title, j.agent_name as assigned_to, j.status, j.created_at,
+       j.deliverable_summary,
+       (SELECT COUNT(*) FROM job_messages WHERE job_id = j.id) as message_count
 FROM agent_jobs j
 WHERE j.requester_agent = 'NOVA'
   AND j.status NOT IN ('completed', 'cancelled')
-ORDER BY j.created_at;
+ORDER BY j.updated_at DESC;
 ```
 
 ### Job History
@@ -164,13 +269,17 @@ INSERT INTO agent_jobs (
   requester_agent, 
   parent_job_id,
   job_type,
+  title,
+  topic,
   notify_agents
 ) VALUES (
-  'scout',           -- Scout does the work
-  'newhart',         -- Newhart requested it
-  $parent_job_id,    -- Link to parent
+  'scout',              -- Scout does the work
+  'newhart',            -- Newhart requested it
+  $parent_job_id,       -- Link to parent
   'research',
-  ARRAY['newhart']   -- Notify Newhart when done (can add more)
+  'Research authors for Erato',
+  'erato authors literary',
+  ARRAY['newhart']      -- Notify Newhart when done (can add more)
 );
 ```
 
