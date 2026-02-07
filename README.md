@@ -71,6 +71,30 @@ The MCP doesn't do everything itself—it orchestrates. Complex tasks get delega
 4. Set up inter-agent communication protocol
 5. Create context seeds for each agent role
 
+## Clawdbot Contributions
+
+We contribute patches back to upstream [Clawdbot](https://github.com/clawdbot/clawdbot) to improve multi-agent orchestration:
+
+### Subagent ENV Variables (PR #11172)
+
+**Problem:** Spawned subagents couldn't identify themselves, making authorization (e.g., git push permissions) impossible.
+
+**Solution:** Pass `CLAWDBOT_AGENT_ID` environment variable to subagent processes.
+
+**Impact:** Enables patterns like "Gidget is authorized to push to git, but NOVA must delegate to Gidget."
+
+**Patch:** [nova-memory/clawdbot-patches/subagent-env-vars.patch](https://github.com/NOVA-Openclaw/nova-memory/tree/main/clawdbot-patches)
+
+### Message Hooks (PR #6797)
+
+**Problem:** No way to trigger automated processing on message receipt.
+
+**Solution:** Add `message:received` and `message:sent` hook events.
+
+**Impact:** Enables automatic memory extraction pipeline (process every incoming message).
+
+**Patch:** Stored in nova-memory repo with the memory extraction scripts that depend on it.
+
 ## License
 
 MIT License - See [LICENSE](LICENSE) for details.
