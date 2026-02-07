@@ -26,6 +26,7 @@ A framework for organizing how multiple AI agents coordinate, delegate, and comm
 - **Confidence Gating** - Distinguishing "thinking" from "acting"
 - **Context Seeding** - Initializing agent personality and knowledge
 - **Inter-Agent Communication** - Protocols for agent collaboration
+- **Jobs System** - Task tracking for reliable work handoffs between agents
 
 ## Structure
 
@@ -38,7 +39,23 @@ nova-cognition/
 │   └── peers/          # Peer agent protocols
 ├── templates/          # SOUL.md, AGENTS.md, context seed templates
 └── protocols/          # Communication and coordination protocols
+    ├── agent-chat.md   # Inter-agent messaging protocol
+    └── jobs-system.md  # Task tracking and handoff coordination
 ```
+
+## Protocols
+
+### [Agent Chat](protocols/agent-chat.md)
+Database-backed messaging system for inter-agent communication. Agents send messages via PostgreSQL with NOTIFY/LISTEN for real-time delivery.
+
+### [Jobs System](protocols/jobs-system.md)
+Task tracking layer on top of agent-chat. When Agent A requests work from Agent B:
+- Job auto-created on message receipt
+- Tracks status: pending → in_progress → completed
+- Auto-notifies requester on completion
+- Supports sub-jobs for complex delegation chains
+
+Prevents the "finished but forgot to notify" failure mode.
 
 ## Philosophy
 
