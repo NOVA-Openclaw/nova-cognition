@@ -1,0 +1,12 @@
+# Security - never commit these
+.env
+.env.*
+*.pem
+*.key
+.htpasswd
+.htaccess
+credentials.json
+secrets.json
+service-account*.json
+**/id_rsa
+**/id_ed25519
