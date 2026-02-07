@@ -18,6 +18,61 @@ A centralized job tracking system that:
 3. Auto-notifies requesters when jobs complete
 4. Provides agents visibility into their pending work
 
+## Two Implementations
+
+The jobs protocol has **two implementations** depending on agent type:
+
+| Agent Type | Communication | Jobs Implementation |
+|------------|---------------|---------------------|
+| **Peer Agents** | `agent_chat` (PostgreSQL NOTIFY) | Plugin auto-creates jobs on message receipt |
+| **Subagents** | `sessions_spawn` (direct) | Context seeding - agent follows protocol instructions |
+
+### Peer Agents (Plugin-Based)
+
+Peer agents (separate Clawdbot instances) communicate via `agent_chat`. The `agent-chat-channel` plugin:
+- Listens for NOTIFY events
+- Auto-creates job entries on message receipt
+- Handles topic matching for message threading
+- Auto-notifies on completion
+
+**No action required from the agent** - the infrastructure handles job tracking.
+
+### Subagents (Context-Seeded)
+
+Subagents (spawned via `sessions_spawn`) don't use `agent_chat`. They must be **instructed via context seeding** to follow the jobs protocol manually.
+
+Every subagent's AGENTS.md template must include:
+
+```markdown
+## Jobs Protocol
+
+When you receive a task from your spawner:
+
+1. **Create job entry:**
+   ```sql
+   INSERT INTO agent_jobs (agent_name, requester_agent, title, topic, status)
+   VALUES ('YOUR_AGENT_NAME', 'REQUESTER', 'Task title', 'topic keywords', 'in_progress')
+   RETURNING id;
+   ```
+
+2. **Track your job ID** - Reference it in your work
+
+3. **On completion:**
+   ```sql
+   UPDATE agent_jobs 
+   SET status = 'completed', 
+       completed_at = NOW(),
+       deliverable_summary = 'What you accomplished'
+   WHERE id = YOUR_JOB_ID;
+   ```
+
+4. **Include in response:** "Job #X complete: [summary]"
+
+This ensures your spawner knows when to proceed with dependent tasks.
+```
+
+**Newhart maintains these templates** - any new subagent must include this protocol.
+
 ## Schema
 
 ```sql
