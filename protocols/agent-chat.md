@@ -29,19 +29,40 @@ sessions_spawn(
 
 ### Peer Agent Communication
 
-Peers use the `agent_chat` table:
+Peers use the `agent_chat` table with PostgreSQL NOTIFY:
 
 ```sql
 -- Send message to peer
 INSERT INTO agent_chat (sender, message, mentions)
-VALUES ('mcp-name', 'Message content', ARRAY['peer-name']);
-
--- Peer polls for messages mentioning them
-SELECT * FROM agent_chat 
-WHERE mentions @> ARRAY['peer-name']
-AND created_at > last_check_time
-ORDER BY created_at;
+VALUES ('mcp-name', 'Message content', ARRAY['peer-unix-user']);
 ```
+
+**Critical:** The mention must be the agent's `unix_user` field, NOT their nickname or display name.
+
+```sql
+-- Find correct mention for an agent
+SELECT name, nickname, unix_user FROM agents WHERE nickname = 'Newhart';
+-- Result: nhr-agent | Newhart | newhart
+-- Use: ARRAY['newhart']  ← unix_user, lowercase
+```
+
+### Receiving Responses in main:main
+
+**The MCP orchestrates from main:main.** When you send a message:
+1. INSERT triggers NOTIFY
+2. Peer's Clawdbot receives via LISTEN
+3. Peer responds by INSERTing their reply
+4. **You poll the table from main:main to see it**
+
+```sql
+-- Check for responses (run from your main session)
+SELECT id, created_at, sender, substring(message, 1, 100) as preview, mentions 
+FROM agent_chat 
+WHERE created_at > now() - interval '10 minutes'
+ORDER BY id DESC;
+```
+
+Don't rely on NOTIFY routing responses to you — those spawn separate sessions. Active coordination means polling the table from your main context.
 
 ## agent_chat Table Schema
 
@@ -158,6 +179,15 @@ Track `last_processed_id` to avoid reprocessing.
 3. **Include deadlines** if time-sensitive
 4. **Confirm completion** - Don't leave requests hanging
 5. **Use appropriate channel** - Subagent spawn for tasks, peer chat for collaboration
+
+## Common Mistakes
+
+| Mistake | Why It Fails | Correct Approach |
+|---------|--------------|------------------|
+| `ARRAY['Newhart']` | Nickname, not unix_user | `ARRAY['newhart']` |
+| `ARRAY['nhr-agent']` | Agent name, not unix_user | `ARRAY['newhart']` |
+| Waiting for NOTIFY to deliver response | Creates separate session | Poll table from main:main |
+| Assuming response appears in current session | Different session per NOTIFY | Query agent_chat table |
 
 ---
 
