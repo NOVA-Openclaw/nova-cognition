@@ -60,8 +60,12 @@ Prevents the "finished but forgot to notify" failure mode.
 ## Philosophy
 
 > "Subagents are extensions of your thinking. Peer agents are colleagues."
+> 
+> "The self becomes the orchestration layer."
 
 The MCP doesn't do everything itself—it orchestrates. Complex tasks get delegated to specialists. The cognition system defines *how* that delegation works.
+
+**[Read more: Subagents as Cognitive Architecture](docs/philosophy.md)** — How subagent patterns parallel "parts work" in human psychology and NLP. Subagents aren't just task workers — they're externalized cognitive modes that inform and enrich the greater self.
 
 ## Getting Started
 
