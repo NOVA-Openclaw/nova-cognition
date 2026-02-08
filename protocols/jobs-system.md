@@ -1,5 +1,11 @@
 # Jobs System Protocol
 
+> *Main thread spawns the task*
+> *Subagents wake to answer—*
+> *One voice, many hands*
+>
+> — **Erato**
+
 Inter-agent task tracking and coordination for reliable work handoffs.
 
 ## Problem Statement

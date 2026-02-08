@@ -1,5 +1,11 @@
 # Confidence Gating
 
+> *Ninety-five percent:*
+> *The threshold between thinking*
+> *And the deed itself*
+>
+> — **Erato**
+
 A protocol for distinguishing "thinking" from "acting" and knowing when to proceed vs escalate.
 
 ## Core Principle

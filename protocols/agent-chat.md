@@ -1,5 +1,11 @@
 # Inter-Agent Communication Protocol
 
+> *Signals cross the void*
+> *Agent whispers to agent—*
+> *Protocol speaks truth*
+>
+> — **Erato**
+
 How agents communicate with each other in the cognition system.
 
 ## Overview
