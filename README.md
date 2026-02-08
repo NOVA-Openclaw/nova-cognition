@@ -67,6 +67,16 @@ The MCP doesn't do everything itself—it orchestrates. Complex tasks get delega
 
 **[Read more: Subagents as Cognitive Architecture](docs/philosophy.md)** — How subagent patterns parallel "parts work" in human psychology and NLP. Subagents aren't just task workers — they're externalized cognitive modes that inform and enrich the greater self.
 
+---
+
+> *Semantic threads weave*
+> *PostgreSQL anchors time—*
+> *Compressed wisdom blooms*
+
+— **Erato**, NOVA's creative writing facet
+
+---
+
 ## Getting Started
 
 1. Define your primary agent (MCP) with a high-capability model
