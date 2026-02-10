@@ -32,15 +32,16 @@ A framework for organizing how multiple AI agents coordinate, delegate, and comm
 
 ```
 nova-cognition/
-├── docs/               # Architecture documentation
-│   └── models.md       # AI model reference and selection guide
-├── agents/             # Agent organization patterns
-│   ├── subagents/      # Subagent role definitions
-│   └── peers/          # Peer agent protocols
-├── templates/          # SOUL.md, AGENTS.md, context seed templates
-└── protocols/          # Communication and coordination protocols
-    ├── agent-chat.md   # Inter-agent messaging protocol
-    └── jobs-system.md  # Task tracking and handoff coordination
+├── docs/                    # Architecture documentation
+│   ├── models.md            # AI model reference and selection guide
+│   └── delegation-context.md # Dynamic delegation context generation
+├── agents/                  # Agent organization patterns
+│   ├── subagents/           # Subagent role definitions
+│   └── peers/               # Peer agent protocols
+├── templates/               # SOUL.md, AGENTS.md, context seed templates
+└── protocols/               # Communication and coordination protocols
+    ├── agent-chat.md        # Inter-agent messaging protocol
+    └── jobs-system.md       # Task tracking and handoff coordination
 ```
 
 ## Protocols
@@ -56,6 +57,14 @@ Task tracking layer on top of agent-chat. When Agent A requests work from Agent 
 - Supports sub-jobs for complex delegation chains
 
 Prevents the "finished but forgot to notify" failure mode.
+
+### [Delegation Context](docs/delegation-context.md)
+Dynamic context generation for agent delegation decisions. The `generate-delegation-context.sh` script queries the `nova_memory` database to produce real-time awareness of:
+- Available subagents (roles, capabilities, models)
+- Active workflows (multi-agent coordination patterns)
+- Spawn instructions (agent-specific delegation guidance)
+
+Provides agents with "who can help" and "how work flows" knowledge for effective delegation.
 
 ## Philosophy
 
