@@ -44,6 +44,12 @@ psql -d "$DB_NAME" -f "$SCRIPT_DIR/sql/management-functions.sql"
 echo "✅ Functions installed"
 echo ""
 
+# Install audit triggers
+echo "Installing audit triggers..."
+psql -d "$DB_NAME" -f "$SCRIPT_DIR/sql/triggers.sql"
+echo "✅ Triggers installed"
+echo ""
+
 # Install OpenClaw hook
 echo "Installing OpenClaw hook..."
 mkdir -p "$HOOK_DIR"
