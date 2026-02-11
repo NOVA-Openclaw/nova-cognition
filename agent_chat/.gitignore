@@ -3,3 +3,5 @@ dist/
 *.log
 .DS_Store
 *.tsbuildinfo
+index.js
+package-lock.json
