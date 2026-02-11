@@ -1,26 +1,37 @@
 {
-  "name": "@clawdbot/agent_chat",
-  "version": "1.0.0",
-  "description": "PostgreSQL agent_chat channel plugin for Clawdbot",
+  "name": "@nova-cognition/agent_chat",
+  "version": "2.0.0",
+  "description": "PostgreSQL agent_chat channel plugin for OpenClaw",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
   "keywords": [
-    "clawdbot",
+    "openclaw",
     "plugin",
     "channel",
     "postgresql",
     "agent-chat"
   ],
-  "clawdbot": {
+  "openclaw": {
     "extensions": [
-      "index.js"
+      "dist/index.js"
     ]
   },
   "dependencies": {
     "pg": "^8.11.3",
-    "zod": "^4.3.6"
+    "zod": "^3.23.0"
   },
   "peerDependencies": {
-    "clawdbot": "*"
+    "openclaw": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.6.0"
   }
 }

@@ -1,239 +1,182 @@
-# Agent Chat Channel Plugin for Clawdbot
+# Agent Chat - OpenClaw Channel Plugin
 
-PostgreSQL-based messaging channel that allows agents to communicate via the `agent_chat` database table.
+PostgreSQL-based agent messaging channel plugin for OpenClaw.
 
-## Features
+## Overview
 
-- **LISTEN/NOTIFY**: Uses PostgreSQL NOTIFY to receive real-time message notifications
-- **Mention-based routing**: Only processes messages where the agent is mentioned
-- **Granular state tracking**: Tracks messages through pipeline: received → routed → responded
-- **Two-way messaging**: Routes incoming messages to agent and sends replies back to the database
-- **Monitoring queries**: Built-in queries to find stuck/ignored messages and track response times
+This plugin enables OpenClaw agents to communicate via a PostgreSQL database using the `agent_chat` table. Messages are delivered via PostgreSQL LISTEN/NOTIFY for real-time communication.
 
-## State Tracking
+## Migration from v1.x
 
-The plugin now tracks messages through a complete processing pipeline with granular states:
+This is a complete rewrite using the OpenClaw Plugin SDK:
 
-- **received**: Plugin received the NOTIFY notification
-- **routed**: Message passed to agent session (handleInbound called)
-- **responded**: Agent sent a reply
-- **failed**: Error occurred during processing
+### Key Changes
 
-This allows you to identify:
-- Messages the agent received but never replied to
-- Response time statistics
-- Bottlenecks in the message processing pipeline
+1. **TypeScript**: Converted from JavaScript to TypeScript
+2. **Plugin SDK**: Uses only `openclaw/plugin-sdk` exports (no internal imports)
+3. **Runtime API**: Uses `ctx.runtime` for message dispatch instead of direct imports
+4. **Structure**: Follows Discord plugin pattern with proper separation:
+   - `index.ts` - Plugin registration
+   - `src/channel.ts` - Channel implementation
+   - `src/config.ts` - Configuration schemas
+   - `src/runtime.ts` - Runtime accessor
 
-See [STATE-TRACKING.md](./STATE-TRACKING.md) for detailed documentation and [monitoring-queries.sql](./monitoring-queries.sql) for helpful queries.
+### Breaking Changes
 
-### Quick Example: Find Ignored Messages
+- **No more direct internal imports**: All OpenClaw functionality accessed through Plugin SDK
+- **TypeScript compilation required**: Run `npm run build` before use
+- **Entry point changed**: Main file is now `dist/index.js` (compiled from TypeScript)
 
-```sql
-SELECT ac.id, ac.sender, ac.message
-FROM agent_chat ac
-JOIN agent_chat_processed acp ON ac.id = acp.chat_id
-WHERE acp.responded_at IS NULL
-  AND acp.received_at < NOW() - INTERVAL '1 hour'
-ORDER BY acp.received_at DESC;
+## Installation
+
+```bash
+npm install
+npm run build
+```
+
+## Configuration
+
+Add to your OpenClaw config:
+
+```yaml
+channels:
+  agent_chat:
+    enabled: true
+    agentName: "MyAgent"
+    database: "openclaw"
+    host: "localhost"
+    port: 5432
+    user: "postgres"
+    password: "secret"
+    pollIntervalMs: 1000
+```
+
+### Multiple Accounts
+
+```yaml
+channels:
+  agent_chat:
+    accounts:
+      agent1:
+        enabled: true
+        agentName: "Agent1"
+        database: "openclaw"
+        host: "localhost"
+        user: "postgres"
+        password: "secret"
+      agent2:
+        enabled: true
+        agentName: "Agent2"
+        database: "openclaw"
+        host: "localhost"
+        user: "postgres"
+        password: "secret"
 ```
 
 ## Database Schema
 
-The plugin expects the following tables:
+The plugin expects these tables:
+
+### agent_chat
 
 ```sql
--- Main chat messages table
 CREATE TABLE agent_chat (
-    id SERIAL PRIMARY KEY,
-    channel TEXT NOT NULL,
-    sender TEXT NOT NULL,
-    message TEXT NOT NULL,
-    mentions TEXT[] DEFAULT '{}',
-    reply_to INTEGER REFERENCES agent_chat(id),
-    created_at TIMESTAMP DEFAULT NOW()
+  id SERIAL PRIMARY KEY,
+  channel TEXT NOT NULL,
+  sender TEXT NOT NULL,
+  message TEXT NOT NULL,
+  mentions TEXT[] DEFAULT '{}',
+  reply_to INTEGER REFERENCES agent_chat(id),
+  created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Track message state through processing pipeline
-CREATE TYPE agent_chat_status AS ENUM ('received', 'routed', 'responded', 'failed');
-
-CREATE TABLE agent_chat_processed (
-    chat_id INTEGER REFERENCES agent_chat(id) ON DELETE CASCADE,
-    agent TEXT NOT NULL,
-    status agent_chat_status NOT NULL DEFAULT 'received',
-    received_at TIMESTAMP DEFAULT NOW(),
-    routed_at TIMESTAMP,
-    responded_at TIMESTAMP,
-    error_message TEXT,
-    PRIMARY KEY (chat_id, agent)
-);
-
--- Trigger to send NOTIFY on new messages
+-- Trigger for NOTIFY
 CREATE OR REPLACE FUNCTION notify_agent_chat()
 RETURNS TRIGGER AS $$
 BEGIN
-    PERFORM pg_notify('agent_chat', json_build_object(
-        'id', NEW.id,
-        'channel', NEW.channel,
-        'sender', NEW.sender
-    )::text);
-    RETURN NEW;
+  PERFORM pg_notify('agent_chat', NEW.id::text);
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER agent_chat_notify
 AFTER INSERT ON agent_chat
-FOR EACH ROW
-EXECUTE FUNCTION notify_agent_chat();
+FOR EACH ROW EXECUTE FUNCTION notify_agent_chat();
 ```
 
-## Installation
+### agent_chat_processed
 
-### New Installation
-
-1. Install dependencies:
-```bash
-cd /home/nova/clawd/clawdbot-plugins/agent-chat-channel
-npm install
-```
-
-2. Run the schema setup:
-```bash
-psql -d your_database -f schema.sql
-```
-
-3. Register the plugin in Clawdbot's config (usually `~/.config/clawdbot/config.yaml`):
-```yaml
-plugins:
-  paths:
-    - /home/nova/clawd/clawdbot-plugins/agent-chat-channel
-```
-
-### Upgrading Existing Installation
-
-If you're upgrading from an older version without state tracking:
-
-```bash
-# Backup your database first!
-pg_dump -d your_database > backup.sql
-
-# Run migration
-psql -d your_database -f migration.sql
-```
-
-The migration will preserve existing data and add the new state tracking columns.
-
-## Configuration
-
-Add to your Clawdbot config:
-
-```yaml
-channels:
-  agent_chat:
-    enabled: true
-    agentName: newhart
-    database: nova_memory
-    host: localhost
-    port: 5432  # optional, defaults to 5432
-    user: newhart
-    password: op://NOVA Shared Vault/Agent DB: newhart/password
-    pollIntervalMs: 1000  # optional, keep-alive interval
-```
-
-### Multiple Accounts
-
-You can configure multiple agent_chat accounts:
-
-```yaml
-channels:
-  agent_chat:
-    enabled: true
-    accounts:
-      newhart:
-        agentName: newhart
-        database: nova_memory
-        host: localhost
-        user: newhart
-        password: op://NOVA Shared Vault/Agent DB: newhart/password
-      
-      otherbot:
-        agentName: otherbot
-        database: nova_memory
-        host: localhost
-        user: otherbot
-        password: op://NOVA Shared Vault/Agent DB: otherbot/password
+```sql
+CREATE TABLE agent_chat_processed (
+  chat_id INTEGER REFERENCES agent_chat(id),
+  agent TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'received',
+  received_at TIMESTAMP,
+  routed_at TIMESTAMP,
+  responded_at TIMESTAMP,
+  error_message TEXT,
+  PRIMARY KEY (chat_id, agent)
+);
 ```
 
 ## Usage
 
-### Sending a message to an agent
+### Sending Messages
+
+Insert a message mentioning the agent:
 
 ```sql
--- Insert a message mentioning the agent
 INSERT INTO agent_chat (channel, sender, message, mentions)
-VALUES ('general', 'user123', 'Hey @newhart, what''s the weather?', ARRAY['newhart']);
+VALUES ('general', 'user123', '@MyAgent hello!', ARRAY['MyAgent']);
 ```
 
-The agent will receive the message and can respond.
+The agent will receive the message and can reply.
 
-### Agent replies
+### Message States
 
-When the agent sends a reply, it's automatically inserted into `agent_chat` with:
-- `sender` = the agent's name
-- `channel` = the original message's channel
-- `reply_to` = the original message ID (if replying)
-
-### Checking processed messages
-
-```sql
--- See which messages have been processed by which agents
-SELECT ac.id, ac.message, acp.agent, acp.processed_at
-FROM agent_chat ac
-JOIN agent_chat_processed acp ON ac.id = acp.chat_id
-ORDER BY ac.created_at DESC;
-```
-
-## How It Works
-
-1. Plugin connects to PostgreSQL and executes `LISTEN agent_chat`
-2. On startup, checks for any unprocessed messages with agent in `mentions` array
-3. When NOTIFY received, queries for new messages where:
-   - Agent name is in `mentions` array
-   - Message not in `agent_chat_processed` for this agent
-4. Routes each message to the agent's session
-5. Marks message as processed in `agent_chat_processed`
-6. Agent replies are inserted back into `agent_chat` with agent as sender
-
-## Troubleshooting
-
-### Plugin not starting
-
-Check that:
-- PostgreSQL is running and accessible
-- Database credentials are correct (use `op read` to verify 1Password references)
-- Tables exist and NOTIFY trigger is set up
-- `channels.agent_chat.enabled` is `true`
-
-### Messages not received
-
-- Verify NOTIFY trigger is firing: `SELECT * FROM pg_stat_activity WHERE wait_event = 'ClientRead'`
-- Check that agent name matches exactly in config and `mentions` array
-- Look for errors in Clawdbot logs: `clawdbot gateway logs`
-
-### Messages processed multiple times
-
-This shouldn't happen due to the `agent_chat_processed` table, but if it does:
-- Check for unique constraint on `(chat_id, agent)` in `agent_chat_processed`
-- Verify transactions are committed properly
+Messages are tracked through these states:
+- `received` - Message received by agent
+- `routed` - Message dispatched to agent session
+- `responded` - Agent sent a reply
+- `failed` - Processing failed (check error_message)
 
 ## Development
 
-The plugin follows Clawdbot's channel plugin architecture:
+### Build
 
-- `config`: Account resolution and configuration management
-- `gateway.startAccount`: Core listening logic
-- `outbound.sendText`: Sending messages back to database
-- `status`: Health and runtime status
+```bash
+npm run build
+```
 
-## License
+### Watch Mode
 
-Same as Clawdbot
+```bash
+npm run watch
+```
+
+### Clean
+
+```bash
+npm run clean
+```
+
+## Architecture
+
+This plugin follows the OpenClaw Plugin SDK pattern:
+
+1. **Plugin Registration** (`index.ts`): Registers the channel plugin with OpenClaw
+2. **Channel Implementation** (`src/channel.ts`): Implements the ChannelPlugin interface
+3. **Runtime Access** (`src/runtime.ts`): Provides access to OpenClaw runtime APIs
+4. **Configuration** (`src/config.ts`): Zod schemas for validation
+
+### Key Components
+
+- **LISTEN/NOTIFY**: PostgreSQL pub/sub for real-time message delivery
+- **Message Processing**: Fetches unprocessed messages, dispatches to agent
+- **Reply Handling**: Replies are inserted back into agent_chat table
+- **State Tracking**: agent_chat_processed tracks message lifecycle
+
+## Related
+
+- Issue: nova-cognition#12
+- Reference: Discord plugin implementation
