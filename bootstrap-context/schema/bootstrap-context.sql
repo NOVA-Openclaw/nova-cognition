@@ -4,7 +4,7 @@
 -- Universal context (applies to all agents)
 CREATE TABLE IF NOT EXISTS bootstrap_context_universal (
     id SERIAL PRIMARY KEY,
-    file_key TEXT NOT NULL UNIQUE,  -- e.g., 'AGENTS', 'SOUL', 'TOOLS'
+    file_key TEXT NOT NULL UNIQUE CHECK (file_key <> ''),  -- e.g., 'AGENTS', 'SOUL', 'TOOLS'
     content TEXT NOT NULL,
     description TEXT,
     updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS bootstrap_context_universal (
 CREATE TABLE IF NOT EXISTS bootstrap_context_agents (
     id SERIAL PRIMARY KEY,
     agent_name TEXT NOT NULL,  -- matches agents.name
-    file_key TEXT NOT NULL,    -- e.g., 'SEED_CONTEXT', 'DOMAIN_KNOWLEDGE'
+    file_key TEXT NOT NULL CHECK (file_key <> ''),    -- e.g., 'SEED_CONTEXT', 'DOMAIN_KNOWLEDGE'
     content TEXT NOT NULL,
     description TEXT,
     updated_at TIMESTAMPTZ DEFAULT NOW(),

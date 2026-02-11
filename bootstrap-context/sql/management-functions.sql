@@ -10,7 +10,18 @@ CREATE OR REPLACE FUNCTION update_universal_context(
 ) RETURNS INTEGER AS $$
 DECLARE
     v_id INTEGER;
+    v_max_size INTEGER;
 BEGIN
+    -- Enforce max_file_size from config
+    SELECT (value::text)::integer INTO v_max_size 
+    FROM bootstrap_context_config 
+    WHERE key = 'max_file_size';
+    
+    IF length(p_content) > v_max_size THEN
+        RAISE EXCEPTION 'Content size (% chars) exceeds maximum allowed size (% chars)', 
+            length(p_content), v_max_size;
+    END IF;
+    
     INSERT INTO bootstrap_context_universal (file_key, content, description, updated_by)
     VALUES (p_file_key, p_content, p_description, p_updated_by)
     ON CONFLICT (file_key) DO UPDATE
@@ -34,7 +45,18 @@ CREATE OR REPLACE FUNCTION update_agent_context(
 ) RETURNS INTEGER AS $$
 DECLARE
     v_id INTEGER;
+    v_max_size INTEGER;
 BEGIN
+    -- Enforce max_file_size from config
+    SELECT (value::text)::integer INTO v_max_size 
+    FROM bootstrap_context_config 
+    WHERE key = 'max_file_size';
+    
+    IF length(p_content) > v_max_size THEN
+        RAISE EXCEPTION 'Content size (% chars) exceeds maximum allowed size (% chars)', 
+            length(p_content), v_max_size;
+    END IF;
+    
     INSERT INTO bootstrap_context_agents (agent_name, file_key, content, description, updated_by)
     VALUES (p_agent_name, p_file_key, p_content, p_description, p_updated_by)
     ON CONFLICT (agent_name, file_key) DO UPDATE
@@ -49,6 +71,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Get all bootstrap files for a specific agent (universal + agent-specific)
+-- Agent-specific files override universal files with the same file_key
 CREATE OR REPLACE FUNCTION get_agent_bootstrap(p_agent_name TEXT)
 RETURNS TABLE (
     filename TEXT,
@@ -57,24 +80,33 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
     RETURN QUERY
-    -- Universal context files
-    SELECT 
-        file_key || '.md' as filename,
-        u.content,
-        'universal'::TEXT as source
-    FROM bootstrap_context_universal u
-    WHERE (SELECT value::boolean FROM bootstrap_context_config WHERE key = 'enabled')
-    
-    UNION ALL
-    
-    -- Agent-specific files
-    SELECT 
-        file_key || '.md' as filename,
-        a.content,
-        'agent'::TEXT as source
-    FROM bootstrap_context_agents a
-    WHERE a.agent_name = p_agent_name
-        AND (SELECT value::boolean FROM bootstrap_context_config WHERE key = 'enabled');
+    SELECT DISTINCT ON (subq.filename)
+        subq.filename,
+        subq.content,
+        subq.source
+    FROM (
+        -- Agent-specific files (higher priority)
+        SELECT 
+            file_key || '.md' as filename,
+            a.content,
+            'agent'::TEXT as source,
+            1 as priority
+        FROM bootstrap_context_agents a
+        WHERE a.agent_name = p_agent_name
+            AND (SELECT value::boolean FROM bootstrap_context_config WHERE key = 'enabled')
+        
+        UNION ALL
+        
+        -- Universal context files (lower priority)
+        SELECT 
+            file_key || '.md' as filename,
+            u.content,
+            'universal'::TEXT as source,
+            2 as priority
+        FROM bootstrap_context_universal u
+        WHERE (SELECT value::boolean FROM bootstrap_context_config WHERE key = 'enabled')
+    ) subq
+    ORDER BY subq.filename, subq.priority;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -125,7 +157,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION delete_universal_context(p_file_key TEXT)
 RETURNS BOOLEAN AS $$
 DECLARE
-    v_deleted BOOLEAN;
+    v_deleted INTEGER;
 BEGIN
     DELETE FROM bootstrap_context_universal WHERE file_key = p_file_key;
     GET DIAGNOSTICS v_deleted = ROW_COUNT;
@@ -137,7 +169,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION delete_agent_context(p_agent_name TEXT, p_file_key TEXT)
 RETURNS BOOLEAN AS $$
 DECLARE
-    v_deleted BOOLEAN;
+    v_deleted INTEGER;
 BEGIN
     DELETE FROM bootstrap_context_agents 
     WHERE agent_name = p_agent_name AND file_key = p_file_key;
