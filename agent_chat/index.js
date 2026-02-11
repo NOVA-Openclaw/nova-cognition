@@ -21,7 +21,7 @@ async function loadDispatchModules() {
   }
   
   try {
-    // Find the GLOBAL clawdbot installation (the one running the gateway)
+    // Find the GLOBAL openclaw installation (the one running the gateway)
     // The local node_modules copy doesn't have all the templates we need
     const globalPaths = [
       '/home/newhart/.npm-global/lib/node_modules/openclaw',
@@ -29,15 +29,15 @@ async function loadDispatchModules() {
       '/usr/local/lib/node_modules/openclaw',
     ];
     
-    let clawdbotPath = null;
+    let openclawPath = null;
     for (const p of globalPaths) {
       try {
         const { existsSync } = await import('fs');
         const testPath = join(p, 'dist/auto-reply/dispatch.js');
         console.log(`[agent_chat] Checking for dispatch modules at: ${testPath}`);
         if (existsSync(testPath)) {
-          clawdbotPath = p;
-          console.log(`[agent_chat] Found clawdbot at: ${clawdbotPath}`);
+          openclawPath = p;
+          console.log(`[agent_chat] Found openclaw at: ${openclawPath}`);
           break;
         }
       } catch (err) {
@@ -46,22 +46,22 @@ async function loadDispatchModules() {
     }
     
     // Fallback to module resolution if global paths fail
-    if (!clawdbotPath) {
+    if (!openclawPath) {
       console.log('[agent_chat] Global paths failed, trying module resolution...');
       try {
-        const clawdbotMainPath = fileURLToPath(import.meta.resolve('openclaw'));
-        clawdbotPath = dirname(dirname(clawdbotMainPath));
-        console.log(`[agent_chat] Resolved clawdbot via import.meta.resolve: ${clawdbotPath}`);
+        const openclawMainPath = fileURLToPath(import.meta.resolve('openclaw'));
+        openclawPath = dirname(dirname(openclawMainPath));
+        console.log(`[agent_chat] Resolved openclaw via import.meta.resolve: ${openclawPath}`);
       } catch (err) {
         console.error('[agent_chat] Module resolution failed:', err.message);
-        throw new Error('Cannot locate clawdbot installation');
+        throw new Error('Cannot locate openclaw installation');
       }
     }
     
-    console.log('[agent_chat] Loading dispatch modules from:', clawdbotPath);
+    console.log('[agent_chat] Loading dispatch modules from:', openclawPath);
     
     // Load dispatch module
-    const dispatchPath = join(clawdbotPath, 'dist/auto-reply/dispatch.js');
+    const dispatchPath = join(openclawPath, 'dist/auto-reply/dispatch.js');
     console.log(`[agent_chat] Loading: ${dispatchPath}`);
     const dispatchMod = await import(dispatchPath);
     dispatchInboundMessage = dispatchMod.dispatchInboundMessage;
@@ -71,7 +71,7 @@ async function loadDispatchModules() {
     console.log('[agent_chat] ✓ dispatchInboundMessage loaded');
     
     // Load reply dispatcher module
-    const replyPath = join(clawdbotPath, 'dist/auto-reply/reply/reply-dispatcher.js');
+    const replyPath = join(openclawPath, 'dist/auto-reply/reply/reply-dispatcher.js');
     console.log(`[agent_chat] Loading: ${replyPath}`);
     const replyMod = await import(replyPath);
     createReplyDispatcherWithTyping = replyMod.createReplyDispatcherWithTyping;
@@ -81,7 +81,7 @@ async function loadDispatchModules() {
     console.log('[agent_chat] ✓ createReplyDispatcherWithTyping loaded');
     
     // Load inbound context module
-    const contextPath = join(clawdbotPath, 'dist/auto-reply/reply/inbound-context.js');
+    const contextPath = join(openclawPath, 'dist/auto-reply/reply/inbound-context.js');
     console.log(`[agent_chat] Loading: ${contextPath}`);
     const contextMod = await import(contextPath);
     finalizeInboundContext = contextMod.finalizeInboundContext;
@@ -91,7 +91,7 @@ async function loadDispatchModules() {
     console.log('[agent_chat] ✓ finalizeInboundContext loaded');
     
     // Load envelope module
-    const envelopePath = join(clawdbotPath, 'dist/auto-reply/envelope.js');
+    const envelopePath = join(openclawPath, 'dist/auto-reply/envelope.js');
     console.log(`[agent_chat] Loading: ${envelopePath}`);
     const envelopeMod = await import(envelopePath);
     formatInboundEnvelope = envelopeMod.formatInboundEnvelope;
@@ -112,7 +112,7 @@ async function loadDispatchModules() {
 }
 
 /**
- * Agent Chat Channel Plugin for Clawdbot
+ * Agent Chat Channel Plugin for OpenClaw
  * 
  * Listens to PostgreSQL NOTIFY on 'agent_chat' channel and routes messages
  * to the agent when mentioned. Marks processed messages in agent_chat_processed.
@@ -144,7 +144,7 @@ const AgentChatConfigSchema = AgentChatAccountSchemaBase.extend({
 });
 
 /**
- * Resolve agent_chat account config from Clawdbot config
+ * Resolve agent_chat account config from OpenClaw config
  */
 function resolveAgentChatAccount({ cfg, accountId = 'default' }) {
   const channelConfig = cfg.channels?.agent_chat;
@@ -794,7 +794,7 @@ export const agentChatPlugin = {
   },
 };
 
-// Register function for Clawdbot extension loader
+// Register function for OpenClaw extension loader
 export function register(api) {
   api.registerChannel({ plugin: agentChatPlugin });
 }
