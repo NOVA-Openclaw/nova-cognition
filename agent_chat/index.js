@@ -2,6 +2,8 @@ import pg from 'pg';
 import { z } from 'zod';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { homedir } from 'os';
+import { execSync } from 'child_process';
 
 const { Client } = pg;
 
@@ -23,11 +25,24 @@ async function loadDispatchModules() {
   try {
     // Find the GLOBAL openclaw installation (the one running the gateway)
     // The local node_modules copy doesn't have all the templates we need
+    
+    // Get npm global prefix dynamically
+    let npmPrefix = process.env.npm_config_prefix;
+    if (!npmPrefix) {
+      try {
+        npmPrefix = execSync('npm config get prefix', { encoding: 'utf8' }).trim();
+      } catch (err) {
+        console.log('[agent_chat] Could not get npm prefix:', err.message);
+        npmPrefix = '/usr/local'; // fallback
+      }
+    }
+    
     const globalPaths = [
-      '/home/newhart/.npm-global/lib/node_modules/openclaw',
-      '/home/nova/.npm-global/lib/node_modules/openclaw',
-      '/usr/local/lib/node_modules/openclaw',
-    ];
+      process.env.OPENCLAW_PATH,  // Explicit override via environment variable
+      join(homedir(), '.npm-global/lib/node_modules/openclaw'),  // User's npm global
+      join(npmPrefix, 'lib/node_modules/openclaw'),  // System npm global prefix
+      '/usr/local/lib/node_modules/openclaw',  // System fallback
+    ].filter(Boolean);  // Remove undefined/null entries
     
     let openclawPath = null;
     for (const p of globalPaths) {
