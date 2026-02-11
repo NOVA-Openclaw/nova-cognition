@@ -3,15 +3,23 @@ import type {
   ChannelPlugin,
   OpenClawConfig,
   ChannelGatewayContext,
+  ChannelMeta,
 } from "openclaw/plugin-sdk";
-import { getChatChannelMeta } from "openclaw/plugin-sdk";
 import { getAgentChatRuntime } from "./runtime.js";
 import { AgentChatConfigSchema, type ResolvedAgentChatAccount } from "./config.js";
 
 const { Client } = pg;
 
 const PLUGIN_ID = "agent_chat";
-const meta = getChatChannelMeta(PLUGIN_ID);
+
+// Manual meta definition since "agent_chat" is not in the core channel allowlist
+const meta: Omit<ChannelMeta, "id"> = {
+  label: "Agent Chat",
+  selectionLabel: "Agent Chat",
+  docsPath: "/channels/agent_chat",
+  blurb: "PostgreSQL-based agent messaging via agent_chat table",
+  order: 999,
+};
 
 /**
  * Create PostgreSQL client from config
@@ -177,12 +185,12 @@ async function processAgentChatMessage({
   const log = ctx.log;
   const runtime = getAgentChatRuntime();
 
-  log?.info(`Processing message ${message.id} from ${message.sender}`);
+  log?.info?.(`Processing message ${message.id} from ${message.sender}`);
 
   try {
     // Mark as received first
     await markMessageReceived(client, message.id, agentName);
-    log?.debug(`Marked message ${message.id} as received`);
+    log?.debug?.(`Marked message ${message.id} as received`);
 
     // Build session label
     const sessionLabel = buildSessionLabel({
@@ -228,30 +236,30 @@ async function processAgentChatMessage({
     // Create reply dispatcher that sends replies back to agent_chat table
     const { dispatcher, replyOptions, markDispatchIdle } =
       runtime.channel.reply.createReplyDispatcherWithTyping({
-        deliver: async (payload: { text?: string; body?: string }) => {
+        deliver: async (payload, info) => {
           try {
             await insertOutboundMessage(client, {
               channel: message.channel,
               sender: agentName,
-              message: payload.text || payload.body || "",
+              message: payload.text || "",
               replyTo: message.id,
             });
 
             // Mark as responded
             await markMessageResponded(client, message.id, agentName);
-            log?.info(`Sent reply for message ${message.id}`);
+            log?.info?.(`Sent reply for message ${message.id}`);
           } catch (err) {
-            log?.error(`Failed to send reply for message ${message.id}:`, err);
+            log?.error?.(`Failed to send reply for message ${message.id}: ${err}`);
             throw err;
           }
         },
-        onError: (err: Error, info: { kind: string }) => {
-          log?.error(`${info.kind} reply failed:`, err);
+        onError: (err, info) => {
+          log?.error?.(`${info.kind} reply failed: ${err}`);
         },
       });
 
     // Dispatch the message to the agent using dispatchReplyFromConfig
-    log?.info(`🚀 Dispatching message ${message.id} to agent...`);
+    log?.info?.(`🚀 Dispatching message ${message.id} to agent...`);
 
     try {
       await runtime.channel.reply.dispatchReplyFromConfig({
@@ -263,10 +271,10 @@ async function processAgentChatMessage({
 
       markDispatchIdle();
 
-      log?.info(`✅ Successfully dispatched message ${message.id}`);
+      log?.info?.(`✅ Successfully dispatched message ${message.id}`);
       await markMessageRouted(client, message.id, agentName);
     } catch (dispatchError) {
-      log?.error(`❌ Dispatch error for message ${message.id}:`, dispatchError);
+      log?.error?.(`❌ Dispatch error for message ${message.id}: ${dispatchError}`);
       await markMessageFailed(
         client,
         message.id,
@@ -277,7 +285,7 @@ async function processAgentChatMessage({
   } catch (error) {
     // Mark as failed if routing fails
     await markMessageFailed(client, message.id, agentName, (error as Error).message);
-    log?.error(`Failed to route message ${message.id}:`, error);
+    log?.error?.(`Failed to route message ${message.id}: ${error}`);
   }
 }
 
@@ -290,7 +298,7 @@ async function startAgentChatMonitor(
   const { agentName, pollIntervalMs } = ctx.account.config;
   const log = ctx.log;
 
-  log?.info(
+  log?.info?.(
     `Starting monitor for agent: ${agentName} @ ${ctx.account.config.host}:${ctx.account.config.port}/${ctx.account.config.database}`,
   );
 
@@ -298,16 +306,16 @@ async function startAgentChatMonitor(
 
   try {
     await client.connect();
-    log?.info(`Connected to PostgreSQL`);
+    log?.info?.(`Connected to PostgreSQL`);
 
     // Listen to agent_chat channel
     await client.query("LISTEN agent_chat");
-    log?.info(`Listening on channel 'agent_chat'`);
+    log?.info?.(`Listening on channel 'agent_chat'`);
 
     // Handle notifications
     client.on("notification", async (msg) => {
       if (msg.channel === "agent_chat") {
-        log?.debug(`Received notification`);
+        log?.debug?.(`Received notification`);
 
         try {
           const messages = await fetchUnprocessedMessages(client, agentName);
@@ -322,14 +330,14 @@ async function startAgentChatMonitor(
             });
           }
         } catch (error) {
-          log?.error(`Error processing notification:`, error);
+          log?.error?.(`Error processing notification: ${error}`);
         }
       }
     });
 
     // Initial check for existing unprocessed messages
     const initialMessages = await fetchUnprocessedMessages(client, agentName);
-    log?.info(`Found ${initialMessages.length} unprocessed messages on startup`);
+    log?.info?.(`Found ${initialMessages.length} unprocessed messages on startup`);
 
     for (const message of initialMessages) {
       await processAgentChatMessage({
@@ -345,7 +353,7 @@ async function startAgentChatMonitor(
     const keepAliveInterval = setInterval(() => {
       if (!ctx.abortSignal?.aborted) {
         client.query("SELECT 1").catch((err) => {
-          log?.error(`Keep-alive failed:`, err);
+          log?.error?.(`Keep-alive failed: ${err}`);
         });
       }
     }, pollIntervalMs);
@@ -353,14 +361,14 @@ async function startAgentChatMonitor(
     // Handle abort signal
     if (ctx.abortSignal) {
       ctx.abortSignal.addEventListener("abort", async () => {
-        log?.info(`Received abort signal`);
+        log?.info?.(`Received abort signal`);
         clearInterval(keepAliveInterval);
         try {
           await client.query("UNLISTEN agent_chat");
           await client.end();
-          log?.info(`Disconnected from PostgreSQL`);
+          log?.info?.(`Disconnected from PostgreSQL`);
         } catch (error) {
-          log?.error(`Error during shutdown:`, error);
+          log?.error?.(`Error during shutdown: ${error}`);
         }
       });
     }
@@ -372,7 +380,7 @@ async function startAgentChatMonitor(
       }
     });
   } catch (error) {
-    log?.error(`Fatal error:`, error);
+    log?.error?.(`Fatal error: ${error}`);
     try {
       await client.end();
     } catch (cleanupError) {
@@ -426,10 +434,8 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
   id: PLUGIN_ID,
 
   meta: {
+    id: PLUGIN_ID,
     ...meta,
-    name: "Agent Chat",
-    description: "PostgreSQL-based agent messaging via agent_chat table",
-    order: 999, // Low priority in channel list
   },
 
   capabilities: {
@@ -509,7 +515,7 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
 
     defaultAccountId: () => "default",
 
-    isConfigured: (account) =>
+    isConfigured: (account, cfg) =>
       Boolean(
         account.config.agentName &&
           account.config.database &&
@@ -518,7 +524,7 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
           account.config.password,
       ),
 
-    describeAccount: (account) => ({
+    describeAccount: (account, cfg) => ({
       accountId: account.accountId,
       name: account.name,
       enabled: account.enabled,
@@ -539,10 +545,10 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
     deliveryMode: "direct",
     textChunkLimit: 4000, // PostgreSQL text field - generous limit
 
-    sendText: async ({ cfg, to, text, accountId, metadata }) => {
+    sendText: async ({ cfg, to, text, accountId }) => {
       const account = agentChatPlugin.config!.resolveAccount(cfg, accountId);
 
-      if (!agentChatPlugin.config!.isConfigured(account)) {
+      if (!agentChatPlugin.config!.isConfigured?.(account, cfg)) {
         throw new Error(`agent_chat account ${accountId} not configured`);
       }
 
@@ -551,29 +557,15 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
       try {
         await client.connect();
 
-        // Extract channel and reply_to from metadata or 'to' parameter
-        const channel = (metadata?.channel as string) || "default";
-        const replyTo = (metadata?.replyTo as number) || null;
+        // Extract channel from 'to' parameter (format: "agent_chat:channel" or just "channel")
+        const channel = to.includes(":") ? to.split(":").pop() || "default" : to;
 
         const result = await insertOutboundMessage(client, {
           channel,
           sender: account.config.agentName,
           message: text,
-          replyTo,
+          replyTo: null, // Could be enhanced to track reply_to from context
         });
-
-        // If this is a reply to a message, mark the original message as responded
-        if (replyTo) {
-          await markMessageResponded(client, replyTo, account.config.agentName);
-        }
-        // Also check if there's a dbId in metadata (from inbound message routing)
-        else if (metadata?.dbId) {
-          await markMessageResponded(
-            client,
-            metadata.dbId as number,
-            account.config.agentName,
-          );
-        }
 
         return {
           channel: PLUGIN_ID,
@@ -604,8 +596,9 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
     buildChannelSummary: ({ snapshot }) => ({
       configured: snapshot.configured ?? false,
       running: snapshot.running ?? false,
-      agentName: snapshot.agentName ?? null,
-      database: snapshot.database ?? null,
+      // agentName and database stored in probe for custom display
+      agentName: (snapshot.probe as { agentName?: string })?.agentName ?? null,
+      database: (snapshot.probe as { database?: string })?.database ?? null,
     }),
 
     buildAccountSnapshot: ({ account, runtime }) => ({
@@ -619,12 +612,15 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
           account.config.user &&
           account.config.password,
       ),
-      agentName: account.config.agentName,
-      database: account.config.database,
       running: runtime?.running ?? false,
       lastStartAt: runtime?.lastStartAt ?? null,
       lastStopAt: runtime?.lastStopAt ?? null,
       lastError: runtime?.lastError ?? null,
+      // Store custom info in probe
+      probe: {
+        agentName: account.config.agentName,
+        database: account.config.database,
+      },
     }),
   },
 };
