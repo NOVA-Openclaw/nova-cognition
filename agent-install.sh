@@ -184,23 +184,17 @@ verify_files() {
         VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
     fi
     
-    # Check skills
+    # Check skills (accepts both directories and legacy symlinks)
     local skills=("agent-chat" "agent-spawn")
     for skill in "${skills[@]}"; do
-        if [ -L "$WORKSPACE/skills/$skill" ]; then
-            TARGET=$(readlink -f "$WORKSPACE/skills/$skill" 2>/dev/null || readlink "$WORKSPACE/skills/$skill")
-            EXPECTED="$SCRIPT_DIR/focus/skills/$skill"
-            if [ "$TARGET" = "$EXPECTED" ]; then
-                echo -e "  ${CHECK_MARK} Skill symlink correct: $skill"
+        if [ -d "$WORKSPACE/skills/$skill" ]; then
+            if [ -L "$WORKSPACE/skills/$skill" ]; then
+                echo -e "  ${CHECK_MARK} Skill present (legacy symlink): $skill"
             else
-                echo -e "  ${WARNING} Skill symlink points to wrong location: $TARGET"
-                VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
+                echo -e "  ${CHECK_MARK} Skill present: $skill"
             fi
-        elif [ -d "$WORKSPACE/skills/$skill" ]; then
-            echo -e "  ${WARNING} $skill exists but is not a symlink"
-            VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
         else
-            echo -e "  ${CROSS_MARK} Skill not linked: $skill"
+            echo -e "  ${CROSS_MARK} Skill not installed: $skill"
             VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
         fi
     done
@@ -240,7 +234,7 @@ verify_database() {
     fi
     
     # Check required tables for agent_chat
-    local required_tables=("agent_messages" "agent_conversations")
+    local required_tables=("agent_chat" "agent_chat_processed")
     local missing_tables=()
     
     for table in "${required_tables[@]}"; do
@@ -279,41 +273,44 @@ verify_database() {
 # ============================================
 echo "Checking prerequisites..."
 
-# Check Node.js installed
-if command -v node &> /dev/null; then
-    NODE_VERSION=$(node --version)
-    NODE_MAJOR=$(echo "$NODE_VERSION" | sed 's/v\([0-9]*\).*/\1/')
-    if [ "$NODE_MAJOR" -ge 18 ]; then
-        echo -e "  ${CHECK_MARK} Node.js installed ($NODE_VERSION)"
+# Build tool checks — only needed for full install, not verify-only
+if [ $VERIFY_ONLY -eq 0 ]; then
+    # Check Node.js installed
+    if command -v node &> /dev/null; then
+        NODE_VERSION=$(node --version)
+        NODE_MAJOR=$(echo "$NODE_VERSION" | sed 's/v\([0-9]*\).*/\1/')
+        if [ "$NODE_MAJOR" -ge 18 ]; then
+            echo -e "  ${CHECK_MARK} Node.js installed ($NODE_VERSION)"
+        else
+            echo -e "  ${WARNING} Node.js version $NODE_VERSION (recommend 18+)"
+        fi
     else
-        echo -e "  ${WARNING} Node.js version $NODE_VERSION (recommend 18+)"
+        echo -e "  ${CROSS_MARK} Node.js not found"
+        echo ""
+        echo "Please install Node.js 18+ first:"
+        echo "  Ubuntu/Debian: curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - && sudo apt install -y nodejs"
+        echo "  macOS: brew install node"
+        exit 1
     fi
-else
-    echo -e "  ${CROSS_MARK} Node.js not found"
-    echo ""
-    echo "Please install Node.js 18+ first:"
-    echo "  Ubuntu/Debian: curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - && sudo apt install -y nodejs"
-    echo "  macOS: brew install node"
-    exit 1
-fi
 
-# Check npm installed
-if command -v npm &> /dev/null; then
-    NPM_VERSION=$(npm --version)
-    echo -e "  ${CHECK_MARK} npm installed ($NPM_VERSION)"
-else
-    echo -e "  ${CROSS_MARK} npm not found"
-    exit 1
-fi
+    # Check npm installed
+    if command -v npm &> /dev/null; then
+        NPM_VERSION=$(npm --version)
+        echo -e "  ${CHECK_MARK} npm installed ($NPM_VERSION)"
+    else
+        echo -e "  ${CROSS_MARK} npm not found"
+        exit 1
+    fi
 
-# Check TypeScript available (can be local or global)
-if command -v tsc &> /dev/null; then
-    TSC_VERSION=$(tsc --version)
-    echo -e "  ${CHECK_MARK} TypeScript installed ($TSC_VERSION)"
-elif npm list -g typescript &> /dev/null; then
-    echo -e "  ${CHECK_MARK} TypeScript installed (global)"
-else
-    echo -e "  ${WARNING} TypeScript not installed globally (will use local)"
+    # Check TypeScript available (can be local or global)
+    if command -v tsc &> /dev/null; then
+        TSC_VERSION=$(tsc --version)
+        echo -e "  ${CHECK_MARK} TypeScript installed ($TSC_VERSION)"
+    elif npm list -g typescript &> /dev/null; then
+        echo -e "  ${CHECK_MARK} TypeScript installed (global)"
+    else
+        echo -e "  ${WARNING} TypeScript not installed globally (will use local)"
+    fi
 fi
 
 # Check PostgreSQL installed
@@ -336,16 +333,18 @@ else
     echo -e "  ${WARNING} PostgreSQL service not running (required for bootstrap-context)"
 fi
 
-# Check createdb command available
-if command -v createdb &> /dev/null; then
-    echo -e "  ${CHECK_MARK} createdb installed"
-else
-    echo -e "  ${CROSS_MARK} createdb not found"
-    echo ""
-    echo "Please install PostgreSQL client tools:"
-    echo "  Ubuntu/Debian: sudo apt install postgresql-client"
-    echo "  macOS: brew install postgresql"
-    exit 1
+# Check createdb command available (only needed for full install)
+if [ $VERIFY_ONLY -eq 0 ]; then
+    if command -v createdb &> /dev/null; then
+        echo -e "  ${CHECK_MARK} createdb installed"
+    else
+        echo -e "  ${CROSS_MARK} createdb not found"
+        echo ""
+        echo "Please install PostgreSQL client tools:"
+        echo "  Ubuntu/Debian: sudo apt install postgresql-client"
+        echo "  macOS: brew install postgresql"
+        exit 1
+    fi
 fi
 
 # Check nova-memory database exists (only if not in verify-only mode)
@@ -389,13 +388,21 @@ if [ $VERIFY_ONLY -eq 0 ]; then
     fi
     
     # Apply agent_chat schema (idempotent - uses CREATE IF NOT EXISTS)
-    SCHEMA_FILE="$SCRIPT_DIR/focus/focus/agent_chat/schema.sql"
+    SCHEMA_FILE="$SCRIPT_DIR/focus/agent_chat/schema.sql"
     if [ ! -f "$SCHEMA_FILE" ]; then
         echo -e "  ${WARNING} focus/agent_chat/schema.sql not found (will be created by extension)"
     else
         echo "  Applying agent_chat schema..."
-        psql -U "$DB_USER" -d "$DB_NAME" -f "$SCHEMA_FILE" > /dev/null 2>&1
-        echo -e "  ${CHECK_MARK} Schema applied"
+        SCHEMA_ERR="${TMPDIR:-/tmp}/schema-apply-$$.err"
+        if psql -U "$DB_USER" -d "$DB_NAME" -f "$SCHEMA_FILE" > /dev/null 2>"$SCHEMA_ERR"; then
+            echo -e "  ${CHECK_MARK} Schema applied"
+            rm -f "$SCHEMA_ERR"
+        else
+            echo -e "  ${CROSS_MARK} Schema apply failed (exit code $?)"
+            cat "$SCHEMA_ERR" >&2
+            rm -f "$SCHEMA_ERR"
+            exit 1
+        fi
     fi
 fi
 
@@ -636,32 +643,17 @@ for SKILL_NAME in "${SKILLS[@]}"; do
         continue
     fi
     
-    if [ -L "$SKILL_TARGET" ]; then
-        CURRENT_TARGET=$(readlink "$SKILL_TARGET")
-        if [ "$CURRENT_TARGET" = "$SKILL_SOURCE" ]; then
-            echo -e "  ${CHECK_MARK} $SKILL_NAME already linked"
-        else
-            if [ $FORCE_INSTALL -eq 1 ]; then
-                rm "$SKILL_TARGET"
-                ln -s "$SKILL_SOURCE" "$SKILL_TARGET"
-                echo -e "  ${CHECK_MARK} Updated $SKILL_NAME symlink"
-            else
-                echo -e "  ${WARNING} $SKILL_NAME symlink points elsewhere"
-                echo "      Use --force to update"
-            fi
-        fi
-    elif [ -e "$SKILL_TARGET" ]; then
+    if [ -L "$SKILL_TARGET" ] || [ -e "$SKILL_TARGET" ]; then
         if [ $FORCE_INSTALL -eq 1 ]; then
             rm -rf "$SKILL_TARGET"
-            ln -s "$SKILL_SOURCE" "$SKILL_TARGET"
-            echo -e "  ${CHECK_MARK} Replaced $SKILL_NAME with symlink"
+            cp -r "$SKILL_SOURCE" "$SKILL_TARGET"
+            echo -e "  ${CHECK_MARK} Reinstalled $SKILL_NAME (copied)"
         else
-            echo -e "  ${WARNING} $SKILL_NAME exists but is not a symlink"
-            echo "      Use --force to replace"
+            echo -e "  ${WARNING} $SKILL_NAME already exists (use --force to reinstall)"
         fi
     else
-        ln -s "$SKILL_SOURCE" "$SKILL_TARGET"
-        echo -e "  ${CHECK_MARK} Linked skill: $SKILL_NAME"
+        cp -r "$SKILL_SOURCE" "$SKILL_TARGET"
+        echo -e "  ${CHECK_MARK} Installed skill: $SKILL_NAME (copied)"
     fi
 done
 
