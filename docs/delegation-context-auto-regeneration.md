@@ -454,7 +454,7 @@ psql -d nova_memory -c "SELECT table_name, operation, COUNT(*) FROM bootstrap_co
 - [Delegation Context Generation](delegation-context.md) - Current manual system
 - [Issue #10: Bootstrap Context Integration](https://github.com/NOVA-Openclaw/nova-cognition/issues/10)
 - [PR #9: Bootstrap Context System](https://github.com/NOVA-Openclaw/nova-cognition/pull/9)
-- [Bootstrap Context Management](../bootstrap-context/README.md)
+- [Bootstrap Context Management](../focus/bootstrap-context/README.md)
 
 ## Support
 

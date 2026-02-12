@@ -439,11 +439,11 @@ nova-workflow run my-workflow.awl.yaml --dry-run
 
 ### Recommended Structure
 ```
-~/clawd/nova-cognition/protocols/workflows/
+~/clawd/nova-cognition/focus/protocols/workflows/
 ├── getting-started/          # Learning examples
 ├── production/              # Live production workflows
 ├── development/             # Development/testing workflows
-├── templates/               # Reusable workflow templates
+├── focus/templates/               # Reusable workflow templates
 └── archive/                 # Old/deprecated workflows
 ```
 
@@ -466,4 +466,4 @@ nova-workflow run my-workflow.awl.yaml --dry-run
 **📚 See Also:**
 - [Getting Started Guide](awl-getting-started.md)
 - [Full AWL Specification](agent-workflow-language.md)
-- [Example Workflows](../protocols/workflows/)
+- [Example Workflows](../focus/protocols/workflows/)

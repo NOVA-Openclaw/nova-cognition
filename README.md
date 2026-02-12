@@ -35,21 +35,22 @@ nova-cognition/
 ├── docs/                    # Architecture documentation
 │   ├── models.md            # AI model reference and selection guide
 │   └── delegation-context.md # Dynamic delegation context generation
-├── agents/                  # Agent organization patterns
-│   ├── subagents/           # Subagent role definitions
-│   └── peers/               # Peer agent protocols
-├── templates/               # SOUL.md, AGENTS.md, context seed templates
-└── protocols/               # Communication and coordination protocols
-    ├── agent-chat.md        # Inter-agent messaging protocol
-    └── jobs-system.md       # Task tracking and handoff coordination
+├── focus/                   # Multi-agent & initialization components
+│   ├── agents/              # Agent organization patterns
+│   │   ├── subagents/       # Subagent role definitions
+│   │   └── peers/           # Peer agent protocols
+│   ├── templates/           # SOUL.md, AGENTS.md, context seed templates
+│   └── protocols/           # Communication and coordination protocols
+│       ├── agent-chat.md    # Inter-agent messaging protocol
+│       └── jobs-system.md   # Task tracking and handoff coordination
 ```
 
 ## Protocols
 
-### [Agent Chat](protocols/agent-chat.md)
+### [Agent Chat](focus/protocols/agent-chat.md)
 Database-backed messaging system for inter-agent communication. Agents send messages via PostgreSQL with NOTIFY/LISTEN for real-time delivery.
 
-### [Jobs System](protocols/jobs-system.md)
+### [Jobs System](focus/protocols/jobs-system.md)
 Task tracking layer on top of agent-chat. When Agent A requests work from Agent B:
 - Job auto-created on message receipt
 - Tracks status: pending → in_progress → completed

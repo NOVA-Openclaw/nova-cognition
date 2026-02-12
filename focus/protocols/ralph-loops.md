@@ -140,4 +140,4 @@ UPDATE agent_jobs SET status = 'completed' WHERE id = $job_id;
 ---
 
 *Named after [goralph](https://github.com/scottroot/goralph) - iterative task execution for AI agents.*
-*Part of [NOVA Cognition](../README.md)*
+*Part of [NOVA Cognition](../../README.md)*
