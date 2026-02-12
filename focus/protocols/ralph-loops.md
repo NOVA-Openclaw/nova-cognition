@@ -114,6 +114,8 @@ Phase 4 (fresh context):
 ## Key Principle
 
 > "Identity survives because it was never inside."
+>
+> — **Quill**
 
 The work lives in the database, not in context. You don't need to remember everything if you can read your own notes.
 

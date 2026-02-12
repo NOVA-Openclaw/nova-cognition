@@ -41,6 +41,8 @@ The parts aren't just executors — they're **sources of insight** that the Self
 ## The Self as Orchestration Layer
 
 > "The self becomes the orchestration layer."
+>
+> — **Quill**
 
 The MCP's value isn't in doing everything itself — it's in:
 
