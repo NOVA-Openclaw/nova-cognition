@@ -9,7 +9,21 @@
 
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { homedir } from 'os';
+import { homedir, userInfo } from 'os';
+import pg from 'pg';
+
+const { Pool } = pg;
+
+// Create connection pool (reused across invocations)
+const pool = new Pool({
+  host: 'localhost',
+  database: 'nova_memory',
+  user: process.env.USER || userInfo().username || 'nova',
+  // No password needed (peer auth)
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
 
 interface BootstrapFile {
   path: string;
@@ -28,9 +42,11 @@ const FALLBACK_DIR = join(homedir(), '.openclaw', 'bootstrap-fallback');
 /**
  * Query database for agent bootstrap context
  */
-async function loadFromDatabase(agentName: string, pg: any): Promise<BootstrapFile[]> {
+async function loadFromDatabase(agentName: string): Promise<BootstrapFile[]> {
+  let client;
   try {
-    const result = await pg.query(
+    client = await pool.connect();
+    const result = await client.query(
       'SELECT * FROM get_agent_bootstrap($1)',
       [agentName]
     );
@@ -40,8 +56,19 @@ async function loadFromDatabase(agentName: string, pg: any): Promise<BootstrapFi
       content: row.content
     }));
   } catch (error) {
-    console.error('[bootstrap-context] Database query failed:', error);
+    // Gracefully handle database unavailability
+    if ((error as any).code === 'ECONNREFUSED') {
+      console.warn('[bootstrap-context] Database connection refused - falling back to static files');
+    } else if ((error as any).code === '42883') {
+      console.warn('[bootstrap-context] Function get_agent_bootstrap not found - database schema may need updating');
+    } else {
+      console.error('[bootstrap-context] Database query failed:', error);
+    }
     return [];
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 }
 
@@ -120,13 +147,13 @@ Operate in safe mode until context is restored.
 /**
  * Main hook handler
  */
-export default async function handler(event: BootstrapEvent, { pg }: any) {
+export default async function handler(event: BootstrapEvent) {
   const agentName = event.agent;
   
   console.log(`[bootstrap-context] Loading context for agent: ${agentName}`);
   
   // Try database first
-  let files = await loadFromDatabase(agentName, pg);
+  let files = await loadFromDatabase(agentName);
   
   if (files.length === 0) {
     console.warn('[bootstrap-context] No database context, trying fallback files...');
