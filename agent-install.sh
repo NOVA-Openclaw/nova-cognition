@@ -438,19 +438,34 @@ echo "Home directory symlink setup..."
 
 HOME_LINK="$HOME/nova-cognition"
 
+# Check if repo is already at target location (Issue #40)
+if [ "$(readlink -f "$SCRIPT_DIR" 2>/dev/null)" = "$(readlink -f "$HOME_LINK" 2>/dev/null)" ] 2>/dev/null || \
+   [ "$SCRIPT_DIR" = "$HOME_LINK" ]; then
+    echo -e "  ${CHECK_MARK} Repo already at target location, no symlink needed"
 # Handle existing symlink/directory
-if [ -L "$HOME_LINK" ]; then
-    CURRENT_TARGET=$(readlink "$HOME_LINK")
-    if [ "$CURRENT_TARGET" = "$SCRIPT_DIR" ]; then
-        echo -e "  ${CHECK_MARK} Home symlink already correct"
+elif [ -L "$HOME_LINK" ]; then
+    # Detect self-referential symlink (Issue #40, #42)
+    LINK_TARGET=$(readlink "$HOME_LINK" 2>/dev/null)
+    if [ "$LINK_TARGET" = "$HOME_LINK" ] || [ "$(readlink -f "$LINK_TARGET" 2>/dev/null)" = "$(readlink -f "$HOME_LINK" 2>/dev/null)" ]; then
+        echo -e "  ${WARNING} Removing broken self-referential symlink"
+        rm "$HOME_LINK"
+        ln -s "$SCRIPT_DIR" "$HOME_LINK"
+        echo -e "  ${CHECK_MARK} Created home symlink: ~/nova-cognition → $SCRIPT_DIR"
     else
-        if [ $FORCE_INSTALL -eq 1 ]; then
-            rm "$HOME_LINK"
-            ln -s "$SCRIPT_DIR" "$HOME_LINK"
-            echo -e "  ${CHECK_MARK} Updated home symlink"
+        # Use readlink -f for consistent path comparison (Issue #41)
+        CURRENT_TARGET=$(readlink -f "$HOME_LINK" 2>/dev/null || readlink "$HOME_LINK")
+        CANONICAL_SCRIPT_DIR=$(readlink -f "$SCRIPT_DIR" 2>/dev/null || echo "$SCRIPT_DIR")
+        if [ "$CURRENT_TARGET" = "$CANONICAL_SCRIPT_DIR" ]; then
+            echo -e "  ${CHECK_MARK} Home symlink already correct"
         else
-            echo -e "  ${WARNING} Home symlink points to different location: $CURRENT_TARGET"
-            echo "      Use --force to update"
+            if [ $FORCE_INSTALL -eq 1 ]; then
+                rm "$HOME_LINK"
+                ln -s "$SCRIPT_DIR" "$HOME_LINK"
+                echo -e "  ${CHECK_MARK} Updated home symlink"
+            else
+                echo -e "  ${WARNING} Home symlink points to different location: $CURRENT_TARGET"
+                echo "      Use --force to update"
+            fi
         fi
     fi
 elif [ -e "$HOME_LINK" ]; then
@@ -478,19 +493,34 @@ mkdir -p "$OPENCLAW_PROJECTS"
 
 PROJECT_LINK="$OPENCLAW_PROJECTS/nova-cognition"
 
+# Check if repo is already at target location (Issue #40)
+if [ "$(readlink -f "$SCRIPT_DIR" 2>/dev/null)" = "$(readlink -f "$PROJECT_LINK" 2>/dev/null)" ] 2>/dev/null || \
+   [ "$SCRIPT_DIR" = "$PROJECT_LINK" ]; then
+    echo -e "  ${CHECK_MARK} Repo already at target location, no symlink needed"
 # Handle existing symlink/directory
-if [ -L "$PROJECT_LINK" ]; then
-    CURRENT_TARGET=$(readlink "$PROJECT_LINK")
-    if [ "$CURRENT_TARGET" = "$SCRIPT_DIR" ]; then
-        echo -e "  ${CHECK_MARK} Project symlink already correct"
+elif [ -L "$PROJECT_LINK" ]; then
+    # Detect self-referential symlink (Issue #40, #42)
+    LINK_TARGET=$(readlink "$PROJECT_LINK" 2>/dev/null)
+    if [ "$LINK_TARGET" = "$PROJECT_LINK" ] || [ "$(readlink -f "$LINK_TARGET" 2>/dev/null)" = "$(readlink -f "$PROJECT_LINK" 2>/dev/null)" ]; then
+        echo -e "  ${WARNING} Removing broken self-referential symlink"
+        rm "$PROJECT_LINK"
+        ln -s "$SCRIPT_DIR" "$PROJECT_LINK"
+        echo -e "  ${CHECK_MARK} Created project symlink"
     else
-        if [ $FORCE_INSTALL -eq 1 ]; then
-            rm "$PROJECT_LINK"
-            ln -s "$SCRIPT_DIR" "$PROJECT_LINK"
-            echo -e "  ${CHECK_MARK} Updated project symlink"
+        # Use readlink -f for consistent path comparison (Issue #41)
+        CURRENT_TARGET=$(readlink -f "$PROJECT_LINK" 2>/dev/null || readlink "$PROJECT_LINK")
+        CANONICAL_SCRIPT_DIR=$(readlink -f "$SCRIPT_DIR" 2>/dev/null || echo "$SCRIPT_DIR")
+        if [ "$CURRENT_TARGET" = "$CANONICAL_SCRIPT_DIR" ]; then
+            echo -e "  ${CHECK_MARK} Project symlink already correct"
         else
-            echo -e "  ${WARNING} Project symlink points to different location: $CURRENT_TARGET"
-            echo "      Use --force to update"
+            if [ $FORCE_INSTALL -eq 1 ]; then
+                rm "$PROJECT_LINK"
+                ln -s "$SCRIPT_DIR" "$PROJECT_LINK"
+                echo -e "  ${CHECK_MARK} Updated project symlink"
+            else
+                echo -e "  ${WARNING} Project symlink points to different location: $CURRENT_TARGET"
+                echo "      Use --force to update"
+            fi
         fi
     fi
 elif [ -e "$PROJECT_LINK" ]; then
