@@ -111,6 +111,30 @@ SELECT filename, source, length(content) as size
 FROM get_agent_bootstrap('test');
 ```
 
+## Troubleshooting
+
+### Database Connection Issues
+
+The hook manages its own database connection. Common issues:
+
+**Connection Refused (ECONNREFUSED)**
+- PostgreSQL not running: `sudo systemctl start postgresql`
+- Wrong host/port: Hook expects localhost:5432
+
+**Function Not Found (42883)**  
+- Database schema not installed: Run `./install.sh`
+- Wrong database: Hook expects `nova_memory`
+
+**Permission Denied**
+- OS user doesn't match database user
+- Add user to database: `createuser $(whoami)`
+- Or ensure 'nova' user exists in PostgreSQL
+
+**Viewing Connection Logs**
+Check OpenClaw logs for `[bootstrap-context]` messages to diagnose connection issues.
+
+The hook will fall back to static files automatically if database connection fails.
+
 ## File Structure
 
 ```

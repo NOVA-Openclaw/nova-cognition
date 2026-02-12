@@ -266,7 +266,36 @@ psql -d nova_memory -c "SELECT content FROM bootstrap_context_universal WHERE fi
 
 ### Database Connection Failed
 
-The hook falls back to static files in `~/.openclaw/bootstrap-fallback/`
+**As of issue #43**, the hook manages its own PostgreSQL connection using peer authentication.
+
+Common connection issues:
+
+**ECONNREFUSED** - PostgreSQL not running:
+```bash
+sudo systemctl start postgresql
+sudo systemctl status postgresql
+```
+
+**Function not found (42883)** - Schema not installed:
+```bash
+cd ~/clawd/nova-cognition/bootstrap-context
+./install.sh
+```
+
+**Permission denied** - User doesn't exist in database:
+```bash
+sudo -u postgres createuser $(whoami)
+# Or ensure 'nova' user exists
+```
+
+**Connection details:**
+- Host: localhost
+- Database: nova_memory  
+- User: $USER → os.userInfo().username → 'nova' (fallback chain)
+- Auth: PostgreSQL peer authentication (no password)
+- Pool: max 5 connections, 5s timeout, 30s idle timeout
+
+If database connection fails, the hook automatically falls back to static files in `~/.openclaw/bootstrap-fallback/`
 
 Check fallback files exist:
 ```bash

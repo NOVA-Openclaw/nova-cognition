@@ -4,10 +4,13 @@ Quick reference for installing and verifying the database bootstrap context syst
 
 ## Prerequisites
 
-- PostgreSQL database `nova_memory` accessible
+- PostgreSQL database `nova_memory` accessible on localhost
+- Current OS user has access to nova_memory database (peer auth)
 - OpenClaw installed
 - `psql` command available
 - Write access to `~/.openclaw/`
+
+**Note:** The hook creates its own database connection using PostgreSQL peer authentication. No password is required, but the OS user must exist in PostgreSQL or 'nova' user must be accessible.
 
 ## Installation Steps
 
