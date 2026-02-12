@@ -4,7 +4,7 @@
 > *The threshold between thinking*
 > *And the deed itself*
 >
-> — **Erato**
+> — **Quill**
 
 A protocol for distinguishing "thinking" from "acting" and knowing when to proceed vs escalate.
 

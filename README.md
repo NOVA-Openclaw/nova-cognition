@@ -83,7 +83,7 @@ The MCP doesn't do everything itself—it orchestrates. Complex tasks get delega
 > *PostgreSQL anchors time—*
 > *Compressed wisdom blooms*
 
-— **Erato**, NOVA's creative writing facet
+— **Quill**, NOVA's creative writing facet
 
 ---
 

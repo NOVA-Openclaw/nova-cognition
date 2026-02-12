@@ -373,7 +373,7 @@ After Coder completes:
 | Coder | coding | Code changes, scripts, implementation work | Specialized |
 | Gidget | git-ops | Commits, PRs, merges, git operations | Moderate |
 | Scout | research | Domain research, information gathering | Long-context |
-| Erato | creative | Creative writing, storytelling, poetry | Creative |
+| Quill | creative | Creative writing, storytelling, poetry | Creative |
 | Curator | media-curation | Media organization, tagging, description | Multimodal |
 | QuickQA | quick-tasks | Simple lookups, fast queries, basic Q&A | Fast/cheap |
 

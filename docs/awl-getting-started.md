@@ -4,7 +4,7 @@
 > *Agents branch and merge as one*
 > *Complex, made simple*
 >
-> — **Erato**
+> — **Quill**
 
 **🚀 From zero to your first AWL workflow in 15 minutes**
 

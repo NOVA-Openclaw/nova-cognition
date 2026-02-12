@@ -4,7 +4,7 @@
 > *Subagents wake to answer—*
 > *One voice, many hands*
 >
-> — **Erato**
+> — **Quill**
 
 Inter-agent task tracking and coordination for reliable work handoffs.
 
@@ -323,7 +323,7 @@ ORDER BY completed_at DESC;
 When an agent delegates part of a job to another agent:
 
 ```sql
--- Original job to Newhart: "Create Erato agent"
+-- Original job to Newhart: "Create Quill agent"
 -- Newhart creates sub-job for Scout: "Research authors"
 
 INSERT INTO agent_jobs (
@@ -339,7 +339,7 @@ INSERT INTO agent_jobs (
   'newhart',            -- Newhart requested it
   $parent_job_id,       -- Link to parent
   'research',
-  'Research authors for Erato',
+  'Research authors for Quill',
   'erato authors literary',
   ARRAY['newhart']      -- Notify Newhart when done (can add more)
 );
@@ -347,7 +347,7 @@ INSERT INTO agent_jobs (
 
 This creates a job tree:
 ```
-Job #1: Create Erato (Newhart) [in_progress]
+Job #1: Create Quill (Newhart) [in_progress]
   └── Job #2: Research authors (Scout) [completed]
   └── Job #3: Design context seed (Newhart) [pending]
 ```
@@ -394,7 +394,7 @@ INSERT INTO agent_jobs (
   $root_job_id,         -- Always reference the root
   ARRAY['newhart'],     -- Next in pipeline
   'erato literary agent authors',
-  'Curate texts for Erato context seed'
+  'Curate texts for Quill context seed'
 );
 ```
 

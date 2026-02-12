@@ -4,7 +4,7 @@
 > *Agent whispers to agent—*
 > *Protocol speaks truth*
 >
-> — **Erato**
+> — **Quill**
 
 How agents communicate with each other in the cognition system.
 

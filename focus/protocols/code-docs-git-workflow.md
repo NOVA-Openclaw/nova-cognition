@@ -68,7 +68,7 @@ sessions_spawn({
    - Architecture docs
    - Examples
 3. Update docs if needed
-4. For major features: Request haiku from Erato
+4. For major features: Request haiku from Quill
 5. Report to Gidget: "Doc review complete. Updated {files}" or "No doc updates needed"
 
 ### 5. Gidget Commits Everything
@@ -144,7 +144,7 @@ Files: executor.js, docs/agent-workflow-language.md, examples/conditional.yaml")
 - Reviews docs/agent-workflow-language.md
 - Cleans up formatting
 - Adds missing examples
-- Requests haiku from Erato (major feature)
+- Requests haiku from Quill (major feature)
 - Reports: "Doc review complete. Updated agent-workflow-language.md with cleaned examples and haiku epigraph"
 
 **Step 5: Gidget commits**
@@ -155,7 +155,7 @@ git commit -m "feat(awl): add conditional branching support
 Adds conditional step type for branch workflows.
 
 Co-authored-by: Scribe (documentation)
-Co-authored-by: Erato (haiku)"
+Co-authored-by: Quill (haiku)"
 git push origin main
 ```
 
@@ -238,7 +238,7 @@ Track:
 ## Related
 
 - **Scribe agent design**
-- **Scribe + Erato collaboration** (haiku epigraphs)
+- **Scribe + Quill collaboration** (haiku epigraphs)
 - **git-commit-conventions SOP**
 
 ---
