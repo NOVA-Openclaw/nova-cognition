@@ -247,7 +247,7 @@ nova-workflow run simple-deploy.awl.yaml --var branch="feature-xyz"
 ## Next Steps
 
 1. **Read the full docs:** `docs/agent-workflow-language.md`
-2. **Explore examples:** `protocols/workflows/`
+2. **Explore examples:** `focus/protocols/workflows/`
 3. **Create your first workflow** for a recurring task
 4. **Test incrementally** - add steps one at a time
 5. **Share workflows** with the team

@@ -138,7 +138,7 @@ Project: nova-cognition (~/clawd/nova-cognition)
 
 Work issue #5: https://github.com/NOVA-Openclaw/nova-cognition/issues/5
 
-Create the agent-spawn skill at skills/agent-spawn/SKILL.md
+Create the agent-spawn skill at focus/skills/agent-spawn/SKILL.md
 
 Requirements:
 - Document when to use subagent spawning
@@ -290,7 +290,7 @@ Your role: Step 2 - Implement agent code
 Previous step: Scout completed requirements analysis
 Next step: Gidget will commit and create PR
 
-Your deliverable: Working agent code in agents/subagents/<name>/
+Your deliverable: Working agent code in focus/agents/subagents/<name>/
 Expected format: Agent YAML + context seed files + README
 
 Workflow context: This agent will handle [domain] tasks for NOVA.
@@ -319,7 +319,7 @@ When spawning Coder for feature work, follow this pattern:
 gh issue create --repo NOVA-Openclaw/nova-cognition \
   --title "Create agent-spawn skill" \
   --body "Requirements:
-- Location: skills/agent-spawn/SKILL.md
+- Location: focus/skills/agent-spawn/SKILL.md
 - Include: when to use, checklist, procedures
 - Format: Match existing skill structure"
 ```

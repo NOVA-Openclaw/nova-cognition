@@ -189,7 +189,7 @@ verify_files() {
     for skill in "${skills[@]}"; do
         if [ -L "$WORKSPACE/skills/$skill" ]; then
             TARGET=$(readlink -f "$WORKSPACE/skills/$skill" 2>/dev/null || readlink "$WORKSPACE/skills/$skill")
-            EXPECTED="$SCRIPT_DIR/skills/$skill"
+            EXPECTED="$SCRIPT_DIR/focus/skills/$skill"
             if [ "$TARGET" = "$EXPECTED" ]; then
                 echo -e "  ${CHECK_MARK} Skill symlink correct: $skill"
             else
@@ -336,12 +336,67 @@ else
     echo -e "  ${WARNING} PostgreSQL service not running (required for bootstrap-context)"
 fi
 
-# Check nova-memory database exists
-if psql -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-    echo -e "  ${CHECK_MARK} nova-memory database exists"
+# Check createdb command available
+if command -v createdb &> /dev/null; then
+    echo -e "  ${CHECK_MARK} createdb installed"
 else
-    echo -e "  ${WARNING} Database '$DB_NAME' not found"
-    echo "      nova-cognition works best with nova-memory installed first"
+    echo -e "  ${CROSS_MARK} createdb not found"
+    echo ""
+    echo "Please install PostgreSQL client tools:"
+    echo "  Ubuntu/Debian: sudo apt install postgresql-client"
+    echo "  macOS: brew install postgresql"
+    exit 1
+fi
+
+# Check nova-memory database exists (only if not in verify-only mode)
+if [ $VERIFY_ONLY -eq 0 ]; then
+    if psql -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        echo -e "  ${CHECK_MARK} Database '$DB_NAME' exists"
+    else
+        echo -e "  ${INFO} Database '$DB_NAME' not found (will create)"
+    fi
+else
+    if psql -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        echo -e "  ${CHECK_MARK} nova-memory database exists"
+    else
+        echo -e "  ${WARNING} Database '$DB_NAME' not found"
+        echo "      nova-cognition works best with nova-memory installed first"
+    fi
+fi
+
+# ============================================
+# Database Setup (Before verification)
+# ============================================
+if [ $VERIFY_ONLY -eq 0 ]; then
+    echo ""
+    echo "Database setup..."
+    
+    # Check if database exists
+    if ! psql -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        echo "  Creating database '$DB_NAME'..."
+        createdb -U "$DB_USER" "$DB_NAME" || { echo -e "  ${CROSS_MARK} Failed to create database"; exit 1; }
+        echo -e "  ${CHECK_MARK} Database '$DB_NAME' created"
+    else
+        echo -e "  ${CHECK_MARK} Database '$DB_NAME' exists"
+    fi
+    
+    # Verify connection
+    if psql -U "$DB_USER" -d "$DB_NAME" -c '\q' 2>/dev/null; then
+        echo -e "  ${CHECK_MARK} Database connection verified"
+    else
+        echo -e "  ${CROSS_MARK} Cannot connect to database '$DB_NAME'"
+        exit 1
+    fi
+    
+    # Apply agent_chat schema (idempotent - uses CREATE IF NOT EXISTS)
+    SCHEMA_FILE="$SCRIPT_DIR/focus/focus/agent_chat/schema.sql"
+    if [ ! -f "$SCHEMA_FILE" ]; then
+        echo -e "  ${WARNING} focus/agent_chat/schema.sql not found (will be created by extension)"
+    else
+        echo "  Applying agent_chat schema..."
+        psql -U "$DB_USER" -d "$DB_NAME" -f "$SCHEMA_FILE" > /dev/null 2>&1
+        echo -e "  ${CHECK_MARK} Schema applied"
+    fi
 fi
 
 # ============================================
@@ -451,7 +506,7 @@ fi
 echo ""
 echo "Agent Chat extension installation..."
 
-EXTENSION_SOURCE="$SCRIPT_DIR/agent_chat"
+EXTENSION_SOURCE="$SCRIPT_DIR/focus/agent_chat"
 EXTENSION_TARGET="$EXTENSIONS_DIR/agent_chat"
 
 # Create extensions directory if needed
@@ -573,7 +628,7 @@ mkdir -p "$SKILLS_DIR"
 SKILLS=("agent-chat" "agent-spawn")
 
 for SKILL_NAME in "${SKILLS[@]}"; do
-    SKILL_SOURCE="$SCRIPT_DIR/skills/$SKILL_NAME"
+    SKILL_SOURCE="$SCRIPT_DIR/focus/skills/$SKILL_NAME"
     SKILL_TARGET="$SKILLS_DIR/$SKILL_NAME"
     
     if [ ! -d "$SKILL_SOURCE" ]; then
@@ -616,7 +671,7 @@ done
 echo ""
 echo "Bootstrap context system installation..."
 
-BOOTSTRAP_INSTALLER="$SCRIPT_DIR/bootstrap-context/install.sh"
+BOOTSTRAP_INSTALLER="$SCRIPT_DIR/focus/bootstrap-context/install.sh"
 
 if [ -f "$BOOTSTRAP_INSTALLER" ]; then
     # Check if already installed
@@ -624,7 +679,7 @@ if [ -f "$BOOTSTRAP_INSTALLER" ]; then
         echo -e "  ${CHECK_MARK} Bootstrap context already installed (use --force to reinstall)"
     else
         echo "  Running bootstrap-context installer..."
-        cd "$SCRIPT_DIR/bootstrap-context"
+        cd "$SCRIPT_DIR/focus/bootstrap-context"
         
         # Export database settings
         export DB_NAME="$DB_NAME"

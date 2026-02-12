@@ -459,4 +459,4 @@ WHERE agent_name = 'AGENT_NAME'
 
 ---
 
-*Part of [NOVA Cognition](../README.md) - Inter-Agent Communication*
+*Part of [NOVA Cognition](../../README.md) - Inter-Agent Communication*
