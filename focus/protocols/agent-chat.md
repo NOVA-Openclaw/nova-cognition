@@ -35,7 +35,37 @@ sessions_spawn(
 
 ### Peer Agent Communication
 
-Peers use the `agent_chat` table with PostgreSQL NOTIFY:
+Peers use the `agent_chat` table with PostgreSQL NOTIFY. As of 2026-02-13, **enhanced send support** allows flexible agent targeting:
+
+#### New Send Workflow (Recommended)
+
+Use the `sendText()` function with human-friendly identifiers:
+
+```typescript
+// Send using nickname, alias, or agent name (case-insensitive)
+sendText({ 
+  to: "Newhart",           // nickname
+  text: "Meeting at 3pm",
+  channel: "default"
+});
+
+sendText({
+  to: "bob",              // alias  
+  text: "Status update"
+});
+
+sendText({
+  to: "NHR-AGENT",        // case-insensitive name
+  text: "Urgent task"
+});
+```
+
+**How it works:**
+1. `sendText()` calls `resolveAgentName("Newhart")` → returns "nhr-agent"
+2. Message inserted with `mentions: ["nhr-agent"]`
+3. Target agent receives message via their registered identifiers
+
+#### Legacy Direct SQL (Still Works)
 
 ```sql
 -- Send message to peer
@@ -178,6 +208,89 @@ ORDER BY created_at;
 
 Track `last_processed_id` to avoid reprocessing.
 
+## Usage Examples
+
+### Example 1: Send to Agent by Nickname
+
+```typescript
+// Agent "nhr-agent" has nickname "Newhart"
+await sendText({
+  to: "Newhart",
+  text: `We need to create a new subagent for literary production.
+
+Requirements:
+- Full creative writing capability  
+- Adult content support
+- Style mimicry from provided examples
+
+Please recommend:
+1. Best model choice
+2. Instance type (subagent vs peer)
+3. Required context seed structure`,
+  channel: "tasks"
+});
+```
+
+### Example 2: Send Using Alias
+
+```sql
+-- Setup: Add alias for easier reference  
+INSERT INTO agent_aliases (agent_id, alias)
+SELECT id, 'architect' FROM agents WHERE name = 'design-agent';
+
+-- Send using alias
+INSERT INTO agent_chat (sender, message, mentions)
+VALUES ('nova', 'Review the new UI mockups in ~/designs/', ARRAY['architect']);
+```
+
+### Example 3: Case-Insensitive Flexibility
+
+```typescript
+// All these work for the same agent:
+await sendText({ to: "NEWHART", text: "Status update" });
+await sendText({ to: "newhart", text: "Follow up" });  
+await sendText({ to: "Newhart", text: "Final notes" });
+
+// Agent receives all messages because matching is case-insensitive
+```
+
+### Example 4: Multi-Target with Aliases
+
+```sql
+-- Send to multiple agents using their aliases
+INSERT INTO agent_chat (sender, message, mentions) VALUES (
+  'nova',
+  'Please coordinate on the upcoming release:
+   - Architect: Review technical designs
+   - Coder: Implement core features  
+   - QA: Prepare test scenarios',
+  ARRAY['architect', 'coder', 'qa-bot']
+);
+```
+
+### Example 5: Error Handling
+
+```typescript
+try {
+  await sendText({
+    to: "unknown-agent",
+    text: "This will fail"
+  });
+} catch (error) {
+  console.log(error.message);
+  // "Failed to resolve target agent 'unknown-agent': Agent not found..."
+  
+  // Check available agents
+  const agents = await db.query(`
+    SELECT name, nickname, array_agg(aa.alias) as aliases
+    FROM agents a 
+    LEFT JOIN agent_aliases aa ON a.id = aa.agent_id
+    GROUP BY a.name, a.nickname
+  `);
+  console.log('Available agents:', agents.rows);
+}
+```
+
 ## Best Practices
 
 1. **Don't spam** - Batch related items into one message
@@ -186,14 +299,69 @@ Track `last_processed_id` to avoid reprocessing.
 4. **Confirm completion** - Don't leave requests hanging
 5. **Use appropriate channel** - Subagent spawn for tasks, peer chat for collaboration
 
+## Agent Identification & Matching
+
+As of 2026-02-13, agents can be mentioned using any of their identifiers with **case-insensitive matching**:
+
+### Supported Identifiers
+
+1. **Agent Name** (`agents.name`) - Database primary identifier
+2. **Nickname** (`agents.nickname`) - Human-friendly display name  
+3. **Aliases** (`agent_aliases.alias`) - Additional identifiers
+4. **Config agentName** - From Clawdbot configuration
+
+### Examples
+
+```sql
+-- Agent setup
+INSERT INTO agents (name, nickname) VALUES ('nhr-agent', 'Newhart');
+INSERT INTO agent_aliases (agent_id, alias) 
+SELECT id, 'bob' FROM agents WHERE name = 'nhr-agent';
+
+-- All these mentions work (case-insensitive):
+'@nhr-agent' | '@NHR-AGENT' | '@Nhr-Agent'    -- agent name
+'@newhart'   | '@NEWHART'   | '@Newhart'      -- nickname  
+'@bob'       | '@BOB'       | '@Bob'          -- alias
+```
+
+### Managing Agent Aliases
+
+```sql
+-- Add alias for an agent
+INSERT INTO agent_aliases (agent_id, alias)
+SELECT id, 'assistant' FROM agents WHERE name = 'nova-main';
+
+-- View all identifiers for an agent
+SELECT a.name, a.nickname, array_agg(aa.alias) as aliases
+FROM agents a 
+LEFT JOIN agent_aliases aa ON a.id = aa.agent_id
+WHERE a.name = 'nova-main'
+GROUP BY a.id, a.name, a.nickname;
+```
+
 ## Common Mistakes
 
 | Mistake | Why It Fails | Correct Approach |
 |---------|--------------|------------------|
-| `ARRAY['Newhart']` | Nickname, not unix_user | `ARRAY['newhart']` |
-| `ARRAY['nhr-agent']` | Agent name, not unix_user | `ARRAY['newhart']` |
+| Hardcoding exact case | Case-sensitive legacy code | Use sendText() or any case |
+| ~~`ARRAY['Newhart']`~~ | ~~Nickname, not unix_user~~ | **NOW WORKS** (new feature) |
+| ~~`ARRAY['nhr-agent']`~~ | ~~Agent name, not unix_user~~ | **NOW WORKS** (new feature) |
 | Waiting for NOTIFY to deliver response | Creates separate session | Poll table from main:main |
 | Assuming response appears in current session | Different session per NOTIFY | Query agent_chat table |
+
+### Migration Notes
+
+**Before (Legacy):**
+- Required exact `unix_user` field
+- Case-sensitive matching
+- Manual agent lookup needed
+
+**After (Enhanced):**
+- Supports nickname, alias, agent name
+- Case-insensitive matching
+- `sendText()` handles resolution automatically
+
+**Backward Compatibility:** Legacy SQL patterns still work, but new sendText() approach is recommended.
 
 ---
 
