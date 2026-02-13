@@ -322,6 +322,7 @@ CREATE TRIGGER audit_agent_bootstrap_context
 GRANT SELECT, INSERT, UPDATE, DELETE ON agent_bootstrap_context TO nova;
 GRANT SELECT ON agent_bootstrap_context TO newhart;
 GRANT USAGE, SELECT ON SEQUENCE agent_bootstrap_context_id_seq TO nova;
+GRANT SELECT ON bootstrap_context_config TO PUBLIC;  -- All agents need to read config
 
 COMMIT;
 
