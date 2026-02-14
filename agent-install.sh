@@ -723,7 +723,82 @@ else
 fi
 
 # ============================================
-# Part 7: Verification
+# Part 7: Shell Environment Setup
+# ============================================
+echo ""
+echo "Shell environment setup..."
+
+NOVA_DIR="$HOME/.local/share/nova"
+SHELL_ALIASES_SOURCE="$SCRIPT_DIR/dotfiles/shell-aliases.sh"
+SHELL_ALIASES_TARGET="$NOVA_DIR/shell-aliases.sh"
+BASH_ENV_FILE="$HOME/.bash_env"
+OPENCLAW_CONFIG="$OPENCLAW_DIR/openclaw.json"
+
+# Create nova directory if needed
+mkdir -p "$NOVA_DIR"
+
+# Install shell-aliases.sh
+if [ -f "$SHELL_ALIASES_SOURCE" ]; then
+    if [ -f "$SHELL_ALIASES_TARGET" ] && [ $FORCE_INSTALL -eq 0 ]; then
+        echo -e "  ${CHECK_MARK} shell-aliases.sh already installed (use --force to reinstall)"
+    else
+        cp "$SHELL_ALIASES_SOURCE" "$SHELL_ALIASES_TARGET"
+        chmod +x "$SHELL_ALIASES_TARGET"
+        echo -e "  ${CHECK_MARK} Installed shell-aliases.sh → $SHELL_ALIASES_TARGET"
+    fi
+else
+    echo -e "  ${WARNING} shell-aliases.sh source not found: $SHELL_ALIASES_SOURCE"
+fi
+
+# Update .bash_env additively (idempotent)
+BASH_ENV_SOURCE="$SCRIPT_DIR/dotfiles/bash_env"
+if [ -f "$BASH_ENV_SOURCE" ]; then
+    # Check if the correct source line already exists (not just any reference to shell-aliases.sh)
+    if [ -f "$BASH_ENV_FILE" ] && grep -qF '~/.local/share/nova/shell-aliases.sh' "$BASH_ENV_FILE"; then
+        echo -e "  ${CHECK_MARK} ~/.bash_env already sources shell-aliases.sh"
+    else
+        # Create file if doesn't exist or append if it does
+        if [ ! -f "$BASH_ENV_FILE" ]; then
+            cp "$BASH_ENV_SOURCE" "$BASH_ENV_FILE"
+            echo -e "  ${CHECK_MARK} Created ~/.bash_env"
+        else
+            # Append with a blank line separator
+            echo "" >> "$BASH_ENV_FILE"
+            cat "$BASH_ENV_SOURCE" >> "$BASH_ENV_FILE"
+            echo -e "  ${CHECK_MARK} Updated ~/.bash_env (additively)"
+        fi
+    fi
+else
+    echo -e "  ${WARNING} bash_env source not found: $BASH_ENV_SOURCE"
+fi
+
+# Patch OpenClaw config with BASH_ENV
+if [ -f "$OPENCLAW_CONFIG" ]; then
+    # Check if BASH_ENV is already configured
+    if grep -q 'BASH_ENV' "$OPENCLAW_CONFIG"; then
+        echo -e "  ${CHECK_MARK} OpenClaw config already has BASH_ENV set"
+    else
+        # Use jq for JSON manipulation
+        if command -v jq &> /dev/null; then
+            # Merge BASH_ENV into existing env.vars (preserving other entries)
+            jq --arg bashenv "$BASH_ENV_FILE" \
+                '.env.vars.BASH_ENV = $bashenv' \
+                "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+                echo -e "  ${CHECK_MARK} Added BASH_ENV to OpenClaw config (using jq)" || \
+                echo -e "  ${WARNING} Could not update config with jq"
+        else
+            echo -e "  ${WARNING} jq not found, cannot patch OpenClaw config automatically"
+            echo "      Please manually add: {\"env\": {\"vars\": {\"BASH_ENV\": \"$BASH_ENV_FILE\"}}}"
+        fi
+    fi
+else
+    echo -e "  ${WARNING} OpenClaw config not found: $OPENCLAW_CONFIG"
+    echo "      You may need to manually add: {\"env\": {\"vars\": {\"BASH_ENV\": \"$BASH_ENV_FILE\"}}}"
+fi
+
+# ============================================
+# Part 8: Verification
 # ============================================
 echo ""
 verify_files
@@ -749,6 +824,8 @@ echo "  • agent_chat extension (TypeScript) → $EXTENSIONS_DIR/agent_chat"
 echo "  • agent-chat skill → $WORKSPACE/skills/agent-chat"
 echo "  • agent-spawn skill → $WORKSPACE/skills/agent-spawn"
 echo "  • bootstrap-context system → $OPENCLAW_DIR/hooks/db-bootstrap-context"
+echo "  • shell-aliases.sh → $NOVA_DIR/shell-aliases.sh"
+echo "  • ~/.bash_env configured"
 echo ""
 
 echo "Project location:"
