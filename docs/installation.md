@@ -79,21 +79,21 @@ In `~/.clawdbot/clawdbot.json`, add agents to the `agents.list` array:
         "model": "anthropic/claude-opus-4-5",
         "subagents": {
           "allowAgents": [
-            "research-agent",
-            "git-agent",
+            "scout",
+            "gidget",
             "coding-agent"
           ]
         }
       },
       {
-        "id": "research-agent",
+        "id": "scout",
         "model": {
           "primary": "google/gemini-2.5-flash",
           "fallbacks": ["anthropic/claude-sonnet-4-5"]
         }
       },
       {
-        "id": "git-agent",
+        "id": "gidget",
         "model": {
           "primary": "anthropic/claude-sonnet-4-0",
           "fallbacks": ["openai/gpt-4o"]
@@ -180,8 +180,21 @@ clawdbot gateway status
 agents_list
 
 # Test subagent spawn
-sessions_spawn(agentId="research-agent", task="Test: confirm you can spawn and respond")
+sessions_spawn(agentId="scout", task="Test: confirm you can spawn and respond")
 ```
+
+## Advanced Configuration
+
+### Cross-Database Replication
+
+For setups where agents use separate databases but need to share message history, see the [Cross-Database Replication Guide](cross-database-replication.md). This covers:
+
+- PostgreSQL logical replication setup
+- Trigger configuration for replicated data  
+- Automatic detection and configuration via `agent-install.sh`
+- Troubleshooting replication issues
+
+Example: Graybeard agent using `graybeard_memory` database while replicating messages from `nova_memory`.
 
 ## Next Steps
 

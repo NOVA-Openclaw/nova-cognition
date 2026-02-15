@@ -70,41 +70,94 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Get all bootstrap files for a specific agent (universal + agent-specific)
--- Agent-specific files override universal files with the same file_key
+-- Get all bootstrap files for a specific agent 
+-- Returns: universal + GLOBAL + domain + workflow (dynamic) + legacy context
+-- NOTE: This function is updated by migration 059 (domain-based bootstrap) and 061 (workflow cleanup)
+-- The actual implementation may differ - see latest migration for current version
 CREATE OR REPLACE FUNCTION get_agent_bootstrap(p_agent_name TEXT)
 RETURNS TABLE (
     filename TEXT,
     content TEXT,
-    source TEXT  -- 'universal' or 'agent'
+    source TEXT  -- 'universal', 'global', 'domain:name', 'workflow:name', 'agent-legacy'
 ) AS $$
+DECLARE
+    v_agent_id INTEGER;
+    v_enabled BOOLEAN;
 BEGIN
+    -- Check if bootstrap context is enabled
+    SELECT value::boolean INTO v_enabled 
+    FROM bootstrap_context_config 
+    WHERE key = 'enabled';
+    
+    IF NOT COALESCE(v_enabled, true) THEN
+        RETURN;
+    END IF;
+    
+    -- Get agent ID
+    SELECT id INTO v_agent_id FROM agents WHERE name = p_agent_name;
+    
     RETURN QUERY
     SELECT DISTINCT ON (subq.filename)
         subq.filename,
         subq.content,
         subq.source
     FROM (
-        -- Agent-specific files (higher priority)
+        -- 1. Universal workspace files (highest priority)
         SELECT 
-            file_key || '.md' as filename,
-            a.content,
-            'agent'::TEXT as source,
+            u.file_key || '.md' as filename,
+            u.content,
+            'universal'::TEXT as source,
             1 as priority
-        FROM bootstrap_context_agents a
-        WHERE a.agent_name = p_agent_name
-            AND (SELECT value::boolean FROM bootstrap_context_config WHERE key = 'enabled')
+        FROM agent_bootstrap_context_universal u
         
         UNION ALL
         
-        -- Universal context files (lower priority)
+        -- 2. GLOBAL context (applies to all agents)
         SELECT 
-            file_key || '.md' as filename,
-            u.content,
-            'universal'::TEXT as source,
+            bc.file_key || '.md' as filename,
+            bc.content,
+            'global'::TEXT as source,
             2 as priority
-        FROM bootstrap_context_universal u
-        WHERE (SELECT value::boolean FROM bootstrap_context_config WHERE key = 'enabled')
+        FROM agent_bootstrap_context bc
+        WHERE bc.context_type = 'GLOBAL'
+        
+        UNION ALL
+        
+        -- 3. DOMAIN context (for each domain the agent is assigned to)
+        SELECT 
+            bc.file_key || '.md' as filename,
+            bc.content,
+            'domain:' || bc.domain_name as source,
+            3 as priority
+        FROM agent_bootstrap_context bc
+        JOIN agent_domains ad ON bc.domain_name = ad.domain_topic
+        WHERE bc.context_type = 'DOMAIN'
+            AND ad.agent_id = v_agent_id
+        
+        UNION ALL
+        
+        -- 4. Workflow context (dynamic from workflow_steps - Issue #95)
+        SELECT 
+            'WORKFLOW_CONTEXT.md' as filename,
+            'Workflow: ' || w.name || E'\n\n' || w.description as content,
+            'workflow:' || w.name as source,
+            4 as priority
+        FROM workflow_steps ws
+        JOIN workflows w ON ws.workflow_id = w.id
+        WHERE ws.agent_id = v_agent_id
+            AND w.status = 'active'
+        
+        UNION ALL
+        
+        -- 5. Legacy agent-specific context (for backwards compatibility)
+        SELECT 
+            kv.key || '.md' as filename,
+            kv.value as content,
+            'agent-legacy'::TEXT as source,
+            5 as priority
+        FROM agents a
+        CROSS JOIN LATERAL jsonb_each_text(COALESCE(a.bootstrap_context, '{}'::jsonb)) AS kv
+        WHERE a.name = p_agent_name
     ) subq
     ORDER BY subq.filename, subq.priority;
 END;
@@ -227,7 +280,7 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION update_universal_context IS 'Update or insert universal context file';
 COMMENT ON FUNCTION update_agent_context IS 'Update or insert agent-specific context file';
-COMMENT ON FUNCTION get_agent_bootstrap IS 'Get all bootstrap files for an agent (universal + agent-specific)';
+COMMENT ON FUNCTION get_agent_bootstrap IS 'Get all bootstrap files for an agent: universal + GLOBAL + agent domains + workflows (dynamic from workflow_steps) + legacy. Issue #95: Workflows sourced dynamically, no static WORKFLOW context_type.';
 COMMENT ON FUNCTION copy_file_to_bootstrap IS 'Migrate file content to database (auto-detects universal vs agent)';
 COMMENT ON FUNCTION list_all_context IS 'List all context files with metadata';
 COMMENT ON FUNCTION get_bootstrap_config IS 'Get bootstrap system configuration';

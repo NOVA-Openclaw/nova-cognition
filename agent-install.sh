@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Use current OS user for both DB user and name
 DB_USER="${PGUSER:-$(whoami)}"
 DB_NAME="${DB_USER//-/_}_memory"  # Replace hyphens with underscores (nova-staging → nova_staging_memory)
-WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-claude-code}"
+WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-coder}"
 OPENCLAW_DIR="$HOME/.openclaw"
 OPENCLAW_PROJECTS="$OPENCLAW_DIR/projects"
 EXTENSIONS_DIR="$OPENCLAW_DIR/extensions"
@@ -403,6 +403,33 @@ if [ $VERIFY_ONLY -eq 0 ]; then
             rm -f "$SCHEMA_ERR"
             exit 1
         fi
+    fi
+    
+    # Configure triggers for logical replication if subscriptions exist
+    echo "  Checking for logical replication subscriptions..."
+    SUBSCRIPTION_COUNT=$(psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM pg_subscription WHERE subname LIKE '%agent_chat%'" 2>/dev/null || echo "0")
+    
+    if [ "$SUBSCRIPTION_COUNT" -gt 0 ]; then
+        echo -e "  ${CHECK_MARK} Found $SUBSCRIPTION_COUNT agent_chat subscription(s)"
+        echo "  Configuring triggers for logical replication..."
+        
+        # Notification trigger must fire ALWAYS (including replicated rows)
+        if psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER TABLE agent_chat ENABLE ALWAYS TRIGGER trg_notify_agent_chat;" > /dev/null 2>&1; then
+            echo -e "  ${CHECK_MARK} Notification trigger configured (ALWAYS)"
+        else
+            echo -e "  ${WARNING} Failed to configure notification trigger"
+        fi
+        
+        # Embedding trigger should only fire on REPLICA (not on replicated rows)
+        if psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER TABLE agent_chat ENABLE REPLICA TRIGGER trg_embed_chat_message;" > /dev/null 2>&1; then
+            echo -e "  ${CHECK_MARK} Embedding trigger configured (REPLICA only)"
+        else
+            echo -e "  ${WARNING} Failed to configure embedding trigger"
+        fi
+        
+        echo -e "  ${CHECK_MARK} Logical replication triggers configured"
+    else
+        echo "  No agent_chat subscriptions found, using default trigger configuration"
     fi
 fi
 
