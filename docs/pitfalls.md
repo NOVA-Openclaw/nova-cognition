@@ -41,7 +41,7 @@ clawdbot gateway status
 {
   "agents": {
     "list": [
-      { "id": "research-agent", "model": "..." }
+      { "id": "scout", "model": "..." }
     ]
   }
 }
@@ -50,7 +50,7 @@ clawdbot gateway status
 {
   "id": "main",
   "subagents": {
-    "allowAgents": []  // ← research-agent missing!
+    "allowAgents": []  // ← scout missing!
   }
 }
 ```

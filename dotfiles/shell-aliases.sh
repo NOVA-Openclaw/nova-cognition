@@ -2,7 +2,7 @@
 # NOVA shell aliases - SE workflow integration and git workflow enforcement
 
 gh() {
-  # Issue #26: Enforce PR merge permissions - only Gidget (git-agent) can merge
+  # Issue #26: Enforce PR merge permissions - only Gidget (gidget) can merge
   if [[ "$1" == "pr" && "$2" == "merge" ]]; then
     local agent_id="${CLAWDBOT_AGENT_ID:-}"
     local current_user="${USER:-}"
@@ -13,26 +13,26 @@ gh() {
       return $?
     fi
     
-    # Check if this is Gidget (git-agent)
-    if [[ "$agent_id" != "git-agent" ]]; then
-      echo "❌ Only Gidget (git-agent) can merge PRs"
+    # Check if this is Gidget (gidget)
+    if [[ "$agent_id" != "gidget" ]]; then
+      echo "❌ Only Gidget (gidget) can merge PRs"
       echo ""
       echo "The NOVA workflow enforces separation of duties:"
-      echo "  - Coder (claude-code) creates branches, commits, and opens PRs"
-      echo "  - Gidget (git-agent) reviews and merges approved PRs"
+      echo "  - Coder (coder) creates branches, commits, and opens PRs"
+      echo "  - Gidget (gidget) reviews and merges approved PRs"
       echo ""
       if [[ -z "$agent_id" ]]; then
         echo "No CLAWDBOT_AGENT_ID detected. To merge this PR:"
         echo "  1. Delegate to Gidget: 'Hey Gidget, please merge PR #123'"
         echo "  2. Or if you're human, merges should work normally"
-      elif [[ "$agent_id" == "claude-code" ]]; then
+      elif [[ "$agent_id" == "coder" ]]; then
         echo "As Coder, your role is to create and prepare PRs, not merge them."
         echo "To get this merged:"
         echo "  1. Ensure tests pass and PR is ready"
         echo "  2. Ask Gidget to review and merge: 'Gidget, please merge this PR'"
       else
         echo "Agent '$agent_id' is not authorized to merge PRs."
-        echo "Only git-agent (Gidget) can perform merges."
+        echo "Only gidget (Gidget) can perform merges."
       fi
       echo ""
       return 1
