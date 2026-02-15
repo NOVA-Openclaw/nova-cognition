@@ -1,3 +1,22 @@
+-- Migration 061: Add orchestrator_agent_id to workflows table
+-- Issue: NOVA-Openclaw/nova-cognition#97
+-- Purpose: Allow managing/orchestrating agents (like Conductor) to receive
+--          all workflows they orchestrate in their bootstrap context.
+
+BEGIN;
+
+-- 1. Add column
+ALTER TABLE workflows ADD COLUMN IF NOT EXISTS orchestrator_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN workflows.orchestrator_agent_id IS 'Agent that orchestrates/manages this workflow. Used by get_agent_bootstrap() to include workflows in orchestrator context.';
+
+-- 2. Data migration: Set Conductor as orchestrator for all active workflows
+UPDATE workflows
+SET orchestrator_agent_id = (SELECT id FROM agents WHERE name = 'conductor')
+WHERE status = 'active'
+  AND orchestrator_agent_id IS NULL;
+
+-- 3. Update get_agent_bootstrap() to include orchestrator match
 CREATE OR REPLACE FUNCTION public.get_agent_bootstrap(p_agent_name text)
  RETURNS TABLE(filename text, content text, source text)
  LANGUAGE plpgsql
@@ -99,6 +118,6 @@ BEGIN
     ) subq
     ORDER BY subq.filename, subq.priority;
 END;
-$function$
+$function$;
 
-;
+COMMIT;
