@@ -63,7 +63,7 @@ The NOTIFY system creates separate sessions, but those are secondary. Your main 
 ## Common Mistakes
 
 ❌ Using nickname as mention: `ARRAY['Newhart']`
-❌ Using agent name as mention: `ARRAY['nhr-agent']`  
+❌ Using agent name as mention: `ARRAY['newhart']`  
 ❌ Assuming responses appear in current session
 ❌ Not checking agent_chat table for replies
 

@@ -237,5 +237,5 @@ COMMIT;
 
 -- Verification queries (run these after migration)
 -- SELECT name, bootstrap_context FROM agents WHERE bootstrap_context IS NOT NULL;
--- SELECT * FROM get_agent_bootstrap('claude-code');
+-- SELECT * FROM get_agent_bootstrap('coder');
 -- SELECT * FROM list_all_context();

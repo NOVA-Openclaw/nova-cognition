@@ -79,21 +79,21 @@ In `~/.clawdbot/clawdbot.json`, add agents to the `agents.list` array:
         "model": "anthropic/claude-opus-4-5",
         "subagents": {
           "allowAgents": [
-            "research-agent",
-            "git-agent",
+            "scout",
+            "gidget",
             "coding-agent"
           ]
         }
       },
       {
-        "id": "research-agent",
+        "id": "scout",
         "model": {
           "primary": "google/gemini-2.5-flash",
           "fallbacks": ["anthropic/claude-sonnet-4-5"]
         }
       },
       {
-        "id": "git-agent",
+        "id": "gidget",
         "model": {
           "primary": "anthropic/claude-sonnet-4-0",
           "fallbacks": ["openai/gpt-4o"]
@@ -180,7 +180,7 @@ clawdbot gateway status
 agents_list
 
 # Test subagent spawn
-sessions_spawn(agentId="research-agent", task="Test: confirm you can spawn and respond")
+sessions_spawn(agentId="scout", task="Test: confirm you can spawn and respond")
 ```
 
 ## Next Steps

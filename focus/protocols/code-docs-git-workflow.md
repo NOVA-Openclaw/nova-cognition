@@ -27,7 +27,7 @@ NOVA receives completion confirmation
 ## Step-by-Step
 
 ### 1. Coder Completes Work
-**Agent:** Coder (claude-code)
+**Agent:** Coder (coder)
 
 - Implements feature
 - Writes initial docs (rough)
@@ -41,7 +41,7 @@ NOVA → Gidget: "Commit the changes from Coder in {repo}"
 ```
 
 ### 3. Gidget Spawns Scribe
-**Agent:** git-agent (Gidget)
+**Agent:** gidget (Gidget)
 
 **Before committing, Gidget spawns Scribe:**
 
@@ -72,7 +72,7 @@ sessions_spawn({
 5. Report to Gidget: "Doc review complete. Updated {files}" or "No doc updates needed"
 
 ### 5. Gidget Commits Everything
-**Agent:** git-agent (Gidget)
+**Agent:** gidget (Gidget)
 
 **After Scribe reports completion:**
 
@@ -114,7 +114,7 @@ git push origin main
 ```json
 {
   "collaboration": {
-    "with_gidget": "Spawned by git-agent (Gidget) for pre-commit documentation review. Review code changes, update docs if needed, report completion. Gidget will commit everything together."
+    "with_gidget": "Spawned by gidget (Gidget) for pre-commit documentation review. Review code changes, update docs if needed, report completion. Gidget will commit everything together."
   }
 }
 ```
@@ -192,7 +192,7 @@ In these cases, Gidget commits directly without review.
                    ▼
         ┌──────────────────────┐
         │      GIDGET          │
-        │  (git-agent)         │
+        │  (gidget)         │
         └──────────┬───────────┘
                    │
        ┌───────────┴───────────┐

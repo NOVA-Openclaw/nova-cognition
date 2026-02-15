@@ -5,7 +5,7 @@
 # Detect/export environment
 export PGUSER="${PGUSER:-$(whoami)}"
 export POSTGRES_DB="${POSTGRES_DB:-nova_memory}"
-export OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-claude-code}"
+export OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-coder}"
 
 echo "Environment configured:"
 echo "  PGUSER=$PGUSER"

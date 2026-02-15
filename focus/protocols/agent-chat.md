@@ -24,7 +24,7 @@ Subagents are spawned, not messaged:
 
 ```
 sessions_spawn(
-  agentId="research-agent",
+  agentId="scout",
   task="Research X and report findings"
 )
 ```
@@ -48,7 +48,7 @@ VALUES ('mcp-name', 'Message content', ARRAY['peer-unix-user']);
 ```sql
 -- Find correct mention for an agent
 SELECT name, nickname, unix_user FROM agents WHERE nickname = 'Newhart';
--- Result: nhr-agent | Newhart | newhart
+-- Result: newhart | Newhart | newhart
 -- Use: ARRAY['newhart']  ← unix_user, lowercase
 ```
 
@@ -191,7 +191,7 @@ Track `last_processed_id` to avoid reprocessing.
 | Mistake | Why It Fails | Correct Approach |
 |---------|--------------|------------------|
 | `ARRAY['Newhart']` | Nickname, not unix_user | `ARRAY['newhart']` |
-| `ARRAY['nhr-agent']` | Agent name, not unix_user | `ARRAY['newhart']` |
+| `ARRAY['newhart']` | Agent name, not unix_user | `ARRAY['newhart']` |
 | Waiting for NOTIFY to deliver response | Creates separate session | Poll table from main:main |
 | Assuming response appears in current session | Different session per NOTIFY | Query agent_chat table |
 

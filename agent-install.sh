@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Use current OS user for both DB user and name
 DB_USER="${PGUSER:-$(whoami)}"
 DB_NAME="${DB_USER//-/_}_memory"  # Replace hyphens with underscores (nova-staging → nova_staging_memory)
-WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-claude-code}"
+WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-coder}"
 OPENCLAW_DIR="$HOME/.openclaw"
 OPENCLAW_PROJECTS="$OPENCLAW_DIR/projects"
 EXTENSIONS_DIR="$OPENCLAW_DIR/extensions"

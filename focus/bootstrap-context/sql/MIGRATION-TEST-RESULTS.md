@@ -28,7 +28,7 @@
 
 ```sql
 SELECT filename, length(content), source 
-FROM get_agent_bootstrap('claude-code') 
+FROM get_agent_bootstrap('coder') 
 ORDER BY source, filename 
 LIMIT 5;
 ```
@@ -41,8 +41,8 @@ LIMIT 5;
 ### ✅ Test 2: update_agent_context() writes to JSONB
 
 ```sql
-SELECT update_agent_context('claude-code', 'TEST_KEY', 'This is test content for issue #53');
-SELECT bootstrap_context->'TEST_KEY' FROM agents WHERE name = 'claude-code';
+SELECT update_agent_context('coder', 'TEST_KEY', 'This is test content for issue #53');
+SELECT bootstrap_context->'TEST_KEY' FROM agents WHERE name = 'coder';
 ```
 
 **Result:** Successfully added TEST_KEY to bootstrap_context JSONB
@@ -50,8 +50,8 @@ SELECT bootstrap_context->'TEST_KEY' FROM agents WHERE name = 'claude-code';
 ### ✅ Test 3: delete_agent_context() removes key from JSONB
 
 ```sql
-SELECT delete_agent_context('claude-code', 'TEST_KEY');
-SELECT bootstrap_context ? 'TEST_KEY' FROM agents WHERE name = 'claude-code';
+SELECT delete_agent_context('coder', 'TEST_KEY');
+SELECT bootstrap_context ? 'TEST_KEY' FROM agents WHERE name = 'coder';
 ```
 
 **Result:** Successfully removed TEST_KEY from bootstrap_context, returns `false`
@@ -59,7 +59,7 @@ SELECT bootstrap_context ? 'TEST_KEY' FROM agents WHERE name = 'claude-code';
 ### ✅ Test 4: list_all_context() shows agents table data
 
 ```sql
-SELECT * FROM list_all_context() WHERE agent_name = 'claude-code' LIMIT 5;
+SELECT * FROM list_all_context() WHERE agent_name = 'coder' LIMIT 5;
 ```
 
 **Result:** Returns all file keys from `agents.bootstrap_context` with correct metadata
@@ -68,7 +68,7 @@ SELECT * FROM list_all_context() WHERE agent_name = 'claude-code' LIMIT 5;
 
 ```sql
 SELECT filename, substring(content, 1, 50) as content_preview 
-FROM get_agent_bootstrap('claude-code') 
+FROM get_agent_bootstrap('coder') 
 WHERE filename = 'WORKFLOW_CONTEXT.md';
 ```
 

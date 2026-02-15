@@ -104,7 +104,7 @@ Needs task focus:
 
 ```json
 {
-  "agent_id": "research-agent",
+  "agent_id": "scout",
   "role": "research",
   "seed_context": {
     "files": [
