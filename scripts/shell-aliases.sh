@@ -61,7 +61,7 @@ gh() {
         
         # Trigger SE workflow - insert into queue and notify
         psql -d "${USER//-/_}_memory" -q -c \
-          "INSERT INTO coder_issue_queue (repo, issue_number, status) VALUES ('$repo', $issue_num, 'pending_tests') ON CONFLICT DO NOTHING;" 2>/dev/null
+          "INSERT INTO git_issue_queue (repo, issue_number, status) VALUES ('$repo', $issue_num, 'pending_tests') ON CONFLICT DO NOTHING;" 2>/dev/null
         
         psql -d "${USER//-/_}_memory" -q -c \
           "INSERT INTO agent_chat (sender, message, mentions) VALUES ('system', 'SE workflow triggered for $repo#$issue_num', ARRAY['NOVA']);" 2>/dev/null
@@ -82,7 +82,7 @@ Issue: #$issue_num
 Title: $issue_title
 URL: $url
 
-Start at Step 1 (assess scope). Query the workflow steps from the database and proceed through each step, delegating to the appropriate agents. Update coder_issue_queue status as you progress." \
+Start at Step 1 (assess scope). Query the workflow steps from the database and proceed through each step, delegating to the appropriate agents. Update git_issue_queue status as you progress." \
           --json --timeout 600 &>/dev/null &
         disown
         echo "🎼 Conductor dispatched"
