@@ -183,6 +183,19 @@ agents_list
 sessions_spawn(agentId="scout", task="Test: confirm you can spawn and respond")
 ```
 
+## Advanced Configuration
+
+### Cross-Database Replication
+
+For setups where agents use separate databases but need to share message history, see the [Cross-Database Replication Guide](cross-database-replication.md). This covers:
+
+- PostgreSQL logical replication setup
+- Trigger configuration for replicated data  
+- Automatic detection and configuration via `agent-install.sh`
+- Troubleshooting replication issues
+
+Example: Graybeard agent using `graybeard_memory` database while replicating messages from `nova_memory`.
+
 ## Next Steps
 
 1. Populate `ai_models` table with available models
