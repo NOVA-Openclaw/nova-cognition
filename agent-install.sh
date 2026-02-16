@@ -425,6 +425,99 @@ else
     fi
 fi
 
+# Check nova-relationships schema exists in database
+echo ""
+echo "Checking nova-relationships prerequisite..."
+if psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name = 'relationship_types'" 2>/dev/null | grep -q 1 && \
+   psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name = 'relationships'" 2>/dev/null | grep -q 1; then
+    echo -e "  ${CHECK_MARK} nova-relationships schema found (relationship_types, relationships)"
+else
+    echo -e "  ${CROSS_MARK} nova-relationships schema not found in database '$DB_NAME'"
+    if [ $VERIFY_ONLY -eq 1 ]; then
+        echo "      Install: https://github.com/NOVA-Openclaw/nova-relationships"
+        VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
+    else
+        echo ""
+        echo "nova-cognition requires nova-relationships to be installed first."
+        echo "The relationship_types and relationships tables must exist in the database."
+        echo ""
+        echo "Install nova-relationships:"
+        echo "  git clone https://github.com/NOVA-Openclaw/nova-relationships.git"
+        echo "  cd nova-relationships"
+        echo "  ./agent-install.sh"
+        exit 1
+    fi
+fi
+
+# ============================================
+# Part 1.5: API Key Check and Configuration
+# ============================================
+GATEWAY_RESTART_NEEDED=0
+
+echo ""
+echo "API key configuration..."
+
+# Check if ANTHROPIC_API_KEY is set in environment
+ANTHROPIC_KEY="${ANTHROPIC_API_KEY:-}"
+OPENCLAW_CONFIG="$HOME/.openclaw/openclaw.json"
+
+if [ -z "$ANTHROPIC_KEY" ] && [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+    ANTHROPIC_KEY=$(jq -r '.env.vars.ANTHROPIC_API_KEY // empty' "$OPENCLAW_CONFIG" 2>/dev/null)
+fi
+
+if [ -n "$ANTHROPIC_KEY" ]; then
+    echo -e "  ${CHECK_MARK} ANTHROPIC_API_KEY set: ${ANTHROPIC_KEY:0:8}..."
+else
+    if [ $VERIFY_ONLY -eq 1 ]; then
+        echo -e "  ${CROSS_MARK} ANTHROPIC_API_KEY not configured"
+        VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
+    else
+        echo -e "  ${WARNING} ANTHROPIC_API_KEY not set"
+        echo ""
+        echo "Anthropic API key is required for nova-cognition (Claude)."
+        echo "Get your API key from: https://console.anthropic.com/"
+        echo ""
+        read -p "Enter your Anthropic API key (or press Enter to cancel): " user_api_key
+
+        if [ -z "$user_api_key" ]; then
+            echo -e "  ${CROSS_MARK} Installation cancelled - ANTHROPIC_API_KEY is required"
+            echo ""
+            echo "Please set ANTHROPIC_API_KEY and run the installer again:"
+            echo "  export ANTHROPIC_API_KEY='your-key-here'"
+            echo "  ./agent-install.sh"
+            exit 1
+        fi
+
+        if [ ! -f "$OPENCLAW_CONFIG" ]; then
+            echo -e "  ${WARNING} OpenClaw config not found at $OPENCLAW_CONFIG"
+            echo "      Creating new config file..."
+            mkdir -p "$HOME/.openclaw"
+            echo '{}' > "$OPENCLAW_CONFIG"
+        fi
+
+        # Check if jq is available
+        if ! command -v jq &> /dev/null; then
+            echo -e "  ${CROSS_MARK} jq not installed (required to configure API key)"
+            echo "      Install: sudo apt install jq"
+            echo ""
+            echo "      After installing jq, you can manually add the key to $OPENCLAW_CONFIG:"
+            echo "      Or set it in your environment and restart the gateway"
+            exit 1
+        fi
+
+        # Backup config before modification
+        cp "$OPENCLAW_CONFIG" "$OPENCLAW_CONFIG.backup-$(date +%s)"
+
+        # Add API key to config using jq
+        TMP_CONFIG=$(mktemp)
+        jq --arg key "$user_api_key" '.env.vars.ANTHROPIC_API_KEY = $key' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"
+        mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
+
+        echo -e "  ${CHECK_MARK} ANTHROPIC_API_KEY configured in $OPENCLAW_CONFIG"
+        GATEWAY_RESTART_NEEDED=1
+    fi
+fi
+
 # ============================================
 # Database Setup (Before verification)
 # ============================================
