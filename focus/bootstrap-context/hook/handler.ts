@@ -30,13 +30,6 @@ interface BootstrapFile {
   content: string;
 }
 
-interface BootstrapEvent {
-  agent: string;
-  context: {
-    bootstrapFiles: BootstrapFile[];
-  };
-}
-
 const FALLBACK_DIR = join(homedir(), '.openclaw', 'bootstrap-fallback');
 
 /**
@@ -125,7 +118,7 @@ Your bootstrap context system is not functioning properly.
 ## Recovery Steps
 
 1. Check database connection
-2. Verify bootstrap_context tables exist:
+2. Verify agent_bootstrap_context table exists:
    \`\`\`sql
    SELECT * FROM get_agent_bootstrap('your_agent_name');
    \`\`\`
@@ -138,7 +131,7 @@ You are an AI agent in the NOVA system. Your full context could not be loaded.
 Operate in safe mode until context is restored.
 
 **Database:** nova_memory
-**Tables:** bootstrap_context_universal, bootstrap_context_agents
+**Table:** agent_bootstrap_context
 **Hook:** ~/.openclaw/hooks/db-bootstrap-context/
 `
   }];
@@ -146,9 +139,16 @@ Operate in safe mode until context is restored.
 
 /**
  * Main hook handler
+ * 
+ * Receives an InternalHookEvent from OpenClaw with shape:
+ *   { type, action, sessionKey, context: { agentId, bootstrapFiles, ... } }
  */
-export default async function handler(event: BootstrapEvent) {
-  const agentName = event.agent;
+export default async function handler(event: Record<string, any>) {
+  const agentName = (event as any).context?.agentId;
+  if (!agentName) {
+    console.error('[bootstrap-context] No agentId in event.context — cannot look up bootstrap context');
+    return;
+  }
   
   console.log(`[bootstrap-context] Loading context for agent: ${agentName}`);
   
