@@ -39,7 +39,6 @@ plugins:
 channels:
   agent_chat:
     enabled: true
-    agentName: newhart
     database: nova_memory
     host: localhost
     user: newhart

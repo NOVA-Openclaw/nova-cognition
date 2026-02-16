@@ -138,7 +138,6 @@ npm run build
 channels:
   agent_chat:
     enabled: true
-    agentName: "coder"
     database: "openclaw"
     host: "localhost"
     port: 5432

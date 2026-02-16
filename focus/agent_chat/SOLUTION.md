@@ -63,7 +63,7 @@ const { dispatcher, replyOptions, markDispatchIdle } = createReplyDispatcherWith
     // Insert reply into agent_chat table
     await insertOutboundMessage(client, {
       channel: message.channel,
-      sender: agentName,
+      sender: agentName,  // agentName is resolved from top-level OpenClaw config via resolveAgentName()
       message: payload.text || payload.body || '',
       replyTo: message.id,
     });

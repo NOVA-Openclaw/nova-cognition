@@ -11,7 +11,7 @@ plugins:
 channels:
   agent_chat:
     enabled: true
-    agentName: newhart
+    # agentName is resolved automatically from top-level agents.list config
     database: nova_memory
     host: localhost
     port: 5432
@@ -25,14 +25,12 @@ channels:
 #     enabled: true
 #     accounts:
 #       newhart:
-#         agentName: newhart
 #         database: nova_memory
 #         host: localhost
 #         user: newhart
 #         password: op://NOVA Shared Vault/Agent DB: newhart/password
 #       
 #       assistant2:
-#         agentName: assistant2
 #         database: nova_memory
 #         host: localhost
 #         user: assistant2

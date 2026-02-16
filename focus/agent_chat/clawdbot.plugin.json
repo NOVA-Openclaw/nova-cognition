@@ -7,10 +7,6 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "agentName": {
-        "type": "string",
-        "description": "Name of this agent for mentions"
-      },
       "database": {
         "type": "string",
         "description": "PostgreSQL database name"
@@ -40,6 +36,6 @@
         "description": "Route messages to a specific session instead of creating unique sessions per message"
       }
     },
-    "required": ["agentName", "database", "host", "user", "password"]
+    "required": ["database", "host", "user", "password"]
   }
 }

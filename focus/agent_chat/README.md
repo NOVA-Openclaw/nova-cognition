@@ -42,7 +42,6 @@ Add to your OpenClaw config:
 channels:
   agent_chat:
     enabled: true
-    agentName: "MyAgent"
     database: "openclaw"
     host: "localhost"
     port: 5432
@@ -50,6 +49,10 @@ channels:
     password: "secret"
     pollIntervalMs: 1000
 ```
+
+> **Note:** The agent name is resolved automatically from the top-level OpenClaw config
+> (`agents.list` — using the default agent's `name`, falling back to `id`).
+> No `agentName` field is needed in the plugin config.
 
 ### Multiple Accounts
 
@@ -59,14 +62,12 @@ channels:
     accounts:
       agent1:
         enabled: true
-        agentName: "Agent1"
         database: "openclaw"
         host: "localhost"
         user: "postgres"
         password: "secret"
       agent2:
         enabled: true
-        agentName: "Agent2"
         database: "openclaw"
         host: "localhost"
         user: "postgres"
