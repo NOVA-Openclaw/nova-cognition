@@ -165,42 +165,6 @@ echo ""
 verify_files() {
     echo "File verification..."
     
-    # Check home symlink
-    if [ -L "$HOME/nova-cognition" ]; then
-        TARGET=$(readlink -f "$HOME/nova-cognition" 2>/dev/null || readlink "$HOME/nova-cognition")
-        if [ "$TARGET" = "$SCRIPT_DIR" ]; then
-            echo -e "  ${CHECK_MARK} Home symlink correct: ~/nova-cognition → $SCRIPT_DIR"
-        else
-            echo -e "  ${WARNING} Home symlink points to wrong location: $TARGET"
-            echo "      Expected: $SCRIPT_DIR"
-            VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
-        fi
-    elif [ -d "$HOME/nova-cognition" ]; then
-        echo -e "  ${WARNING} ~/nova-cognition exists but is not a symlink"
-        VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
-    else
-        echo -e "  ${CROSS_MARK} Home symlink not found: ~/nova-cognition"
-        VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
-    fi
-    
-    # Check project symlink
-    if [ -L "$OPENCLAW_PROJECTS/nova-cognition" ]; then
-        TARGET=$(readlink -f "$OPENCLAW_PROJECTS/nova-cognition" 2>/dev/null || readlink "$OPENCLAW_PROJECTS/nova-cognition")
-        if [ "$TARGET" = "$SCRIPT_DIR" ]; then
-            echo -e "  ${CHECK_MARK} Project symlink correct: $OPENCLAW_PROJECTS/nova-cognition → $SCRIPT_DIR"
-        else
-            echo -e "  ${WARNING} Project symlink points to wrong location: $TARGET"
-            echo "      Expected: $SCRIPT_DIR"
-            VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
-        fi
-    elif [ -d "$OPENCLAW_PROJECTS/nova-cognition" ]; then
-        echo -e "  ${WARNING} $OPENCLAW_PROJECTS/nova-cognition exists but is not a symlink"
-        VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
-    else
-        echo -e "  ${CROSS_MARK} Project not linked to $OPENCLAW_PROJECTS/"
-        VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
-    fi
-    
     # Check agent_chat extension
     if [ -d "$EXTENSIONS_DIR/agent_chat" ]; then
         echo -e "  ${CHECK_MARK} agent_chat extension directory exists"
@@ -612,114 +576,7 @@ if [ $VERIFY_ONLY -eq 1 ]; then
 fi
 
 # ============================================
-# Part 2: Home Directory Symlink
-# ============================================
-echo ""
-echo "Home directory symlink setup..."
-
-HOME_LINK="$HOME/nova-cognition"
-
-# Check if repo is already at target location (Issue #40)
-if [ "$(readlink -f "$SCRIPT_DIR" 2>/dev/null)" = "$(readlink -f "$HOME_LINK" 2>/dev/null)" ] 2>/dev/null || \
-   [ "$SCRIPT_DIR" = "$HOME_LINK" ]; then
-    echo -e "  ${CHECK_MARK} Repo already at target location, no symlink needed"
-# Handle existing symlink/directory
-elif [ -L "$HOME_LINK" ]; then
-    # Detect self-referential symlink (Issue #40, #42)
-    LINK_TARGET=$(readlink "$HOME_LINK" 2>/dev/null)
-    if [ "$LINK_TARGET" = "$HOME_LINK" ] || [ "$(readlink -f "$LINK_TARGET" 2>/dev/null)" = "$(readlink -f "$HOME_LINK" 2>/dev/null)" ]; then
-        echo -e "  ${WARNING} Removing broken self-referential symlink"
-        rm "$HOME_LINK"
-        ln -s "$SCRIPT_DIR" "$HOME_LINK"
-        echo -e "  ${CHECK_MARK} Created home symlink: ~/nova-cognition → $SCRIPT_DIR"
-    else
-        # Use readlink -f for consistent path comparison (Issue #41)
-        CURRENT_TARGET=$(readlink -f "$HOME_LINK" 2>/dev/null || readlink "$HOME_LINK")
-        CANONICAL_SCRIPT_DIR=$(readlink -f "$SCRIPT_DIR" 2>/dev/null || echo "$SCRIPT_DIR")
-        if [ "$CURRENT_TARGET" = "$CANONICAL_SCRIPT_DIR" ]; then
-            echo -e "  ${CHECK_MARK} Home symlink already correct"
-        else
-            if [ $FORCE_INSTALL -eq 1 ]; then
-                rm "$HOME_LINK"
-                ln -s "$SCRIPT_DIR" "$HOME_LINK"
-                echo -e "  ${CHECK_MARK} Updated home symlink"
-            else
-                echo -e "  ${WARNING} Home symlink points to different location: $CURRENT_TARGET"
-                echo "      Use --force to update"
-            fi
-        fi
-    fi
-elif [ -e "$HOME_LINK" ]; then
-    if [ $FORCE_INSTALL -eq 1 ]; then
-        rm -rf "$HOME_LINK"
-        ln -s "$SCRIPT_DIR" "$HOME_LINK"
-        echo -e "  ${CHECK_MARK} Replaced directory with home symlink"
-    else
-        echo -e "  ${WARNING} $HOME_LINK exists but is not a symlink"
-        echo "      Use --force to replace"
-    fi
-else
-    ln -s "$SCRIPT_DIR" "$HOME_LINK"
-    echo -e "  ${CHECK_MARK} Created home symlink: ~/nova-cognition → $SCRIPT_DIR"
-fi
-
-# ============================================
-# Part 3: OpenClaw Project Symlink
-# ============================================
-echo ""
-echo "OpenClaw project integration..."
-
-# Create projects directory if needed
-mkdir -p "$OPENCLAW_PROJECTS"
-
-PROJECT_LINK="$OPENCLAW_PROJECTS/nova-cognition"
-
-# Check if repo is already at target location (Issue #40)
-if [ "$(readlink -f "$SCRIPT_DIR" 2>/dev/null)" = "$(readlink -f "$PROJECT_LINK" 2>/dev/null)" ] 2>/dev/null || \
-   [ "$SCRIPT_DIR" = "$PROJECT_LINK" ]; then
-    echo -e "  ${CHECK_MARK} Repo already at target location, no symlink needed"
-# Handle existing symlink/directory
-elif [ -L "$PROJECT_LINK" ]; then
-    # Detect self-referential symlink (Issue #40, #42)
-    LINK_TARGET=$(readlink "$PROJECT_LINK" 2>/dev/null)
-    if [ "$LINK_TARGET" = "$PROJECT_LINK" ] || [ "$(readlink -f "$LINK_TARGET" 2>/dev/null)" = "$(readlink -f "$PROJECT_LINK" 2>/dev/null)" ]; then
-        echo -e "  ${WARNING} Removing broken self-referential symlink"
-        rm "$PROJECT_LINK"
-        ln -s "$SCRIPT_DIR" "$PROJECT_LINK"
-        echo -e "  ${CHECK_MARK} Created project symlink"
-    else
-        # Use readlink -f for consistent path comparison (Issue #41)
-        CURRENT_TARGET=$(readlink -f "$PROJECT_LINK" 2>/dev/null || readlink "$PROJECT_LINK")
-        CANONICAL_SCRIPT_DIR=$(readlink -f "$SCRIPT_DIR" 2>/dev/null || echo "$SCRIPT_DIR")
-        if [ "$CURRENT_TARGET" = "$CANONICAL_SCRIPT_DIR" ]; then
-            echo -e "  ${CHECK_MARK} Project symlink already correct"
-        else
-            if [ $FORCE_INSTALL -eq 1 ]; then
-                rm "$PROJECT_LINK"
-                ln -s "$SCRIPT_DIR" "$PROJECT_LINK"
-                echo -e "  ${CHECK_MARK} Updated project symlink"
-            else
-                echo -e "  ${WARNING} Project symlink points to different location: $CURRENT_TARGET"
-                echo "      Use --force to update"
-            fi
-        fi
-    fi
-elif [ -e "$PROJECT_LINK" ]; then
-    if [ $FORCE_INSTALL -eq 1 ]; then
-        rm -rf "$PROJECT_LINK"
-        ln -s "$SCRIPT_DIR" "$PROJECT_LINK"
-        echo -e "  ${CHECK_MARK} Replaced directory with symlink"
-    else
-        echo -e "  ${WARNING} $PROJECT_LINK exists but is not a symlink"
-        echo "      Use --force to replace"
-    fi
-else
-    ln -s "$SCRIPT_DIR" "$PROJECT_LINK"
-    echo -e "  ${CHECK_MARK} Created project symlink"
-fi
-
-# ============================================
-# Part 4: Agent Chat Extension
+# Part 2: Agent Chat Extension
 # ============================================
 echo ""
 echo "Agent Chat extension installation..."
@@ -807,7 +664,7 @@ fi
 cd "$SCRIPT_DIR"
 
 # ============================================
-# Part 5: Skills Installation
+# Part 3: Skills Installation
 # ============================================
 echo ""
 echo "Skills installation..."
@@ -838,7 +695,7 @@ for SKILL_NAME in "${SKILLS[@]}"; do
 done
 
 # ============================================
-# Part 6: Bootstrap Context System
+# Part 4: Bootstrap Context System
 # ============================================
 echo ""
 echo "Bootstrap context system installation..."
@@ -873,7 +730,7 @@ else
 fi
 
 # ============================================
-# Part 7: Shell Environment Setup
+# Part 5: Shell Environment Setup
 # ============================================
 echo ""
 echo "Shell environment setup..."
@@ -948,7 +805,7 @@ else
 fi
 
 # ============================================
-# Part 8: Verification
+# Part 6: Verification
 # ============================================
 echo ""
 verify_files
@@ -979,8 +836,7 @@ echo "  • ~/.bash_env configured"
 echo ""
 
 echo "Project location:"
-echo "  • Home: ~/nova-cognition → $SCRIPT_DIR"
-echo "  • Projects: $OPENCLAW_PROJECTS/nova-cognition → $SCRIPT_DIR"
+echo "  • Source: $SCRIPT_DIR"
 echo ""
 
 echo "Usage examples:"
