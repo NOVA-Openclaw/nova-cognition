@@ -428,9 +428,8 @@ fi
 # Check nova-relationships schema exists in database
 echo ""
 echo "Checking nova-relationships prerequisite..."
-if psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name = 'relationship_types'" 2>/dev/null | grep -q 1 && \
-   psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name = 'relationships'" 2>/dev/null | grep -q 1; then
-    echo -e "  ${CHECK_MARK} nova-relationships schema found (relationship_types, relationships)"
+if psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name = 'entity_relationships'" 2>/dev/null | grep -q 1; then
+    echo -e "  ${CHECK_MARK} nova-relationships schema found (entity_relationships)"
 else
     echo -e "  ${CROSS_MARK} nova-relationships schema not found in database '$DB_NAME'"
     if [ $VERIFY_ONLY -eq 1 ]; then
@@ -439,7 +438,7 @@ else
     else
         echo ""
         echo "nova-cognition requires nova-relationships to be installed first."
-        echo "The relationship_types and relationships tables must exist in the database."
+        echo "The entity_relationships table must exist in the database."
         echo ""
         echo "Install nova-relationships:"
         echo "  git clone https://github.com/NOVA-Openclaw/nova-relationships.git"
