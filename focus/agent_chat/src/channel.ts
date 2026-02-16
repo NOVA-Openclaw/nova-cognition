@@ -19,7 +19,7 @@ const PLUGIN_ID = "agent_chat";
 function resolveAgentName(cfg: OpenClawConfig): string {
   const agents = cfg.agents?.list ?? [];
   const defaultAgent = agents.find((a) => a.default) ?? agents[0];
-  return defaultAgent?.name ?? defaultAgent?.id ?? "";
+  return defaultAgent?.name ?? defaultAgent?.id ?? "main";
 }
 
 // Manual meta definition since "agent_chat" is not in the core channel allowlist
