@@ -811,12 +811,10 @@ echo ""
 echo "Configuring agent_chat channel..."
 
 if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
-    jq --arg agentName "$AGENT_NAME" \
-       --arg database "$DB_NAME" \
+    jq --arg database "$DB_NAME" \
        --arg user "$DB_USER" \
         '.channels.agent_chat = {
             "enabled": true,
-            "agentName": $agentName,
             "database": $database,
             "host": "localhost",
             "port": 5432,
@@ -893,7 +891,7 @@ echo ""
 echo "1. Configure agent_chat channel in your OpenClaw config:"
 echo "   channels:"
 echo "     agent_chat:"
-echo "       agentName: YourAgentName"
+echo "       # agentName is resolved automatically from top-level agents.list config"
 echo "       database: $DB_NAME"
 echo "       host: localhost"
 echo "       user: $DB_USER"

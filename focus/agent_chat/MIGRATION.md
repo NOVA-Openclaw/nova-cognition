@@ -154,7 +154,6 @@ Configuration format remains the same:
 channels:
   agent_chat:
     enabled: true
-    agentName: "MyAgent"
     database: "openclaw"
     host: "localhost"
     port: 5432
@@ -162,6 +161,10 @@ channels:
     password: "secret"
     pollIntervalMs: 1000
 ```
+
+> **Note:** `agentName` has been removed from the plugin config (see #118).
+> The agent name is now resolved automatically from the top-level OpenClaw
+> config (`agents.list`), so no manual configuration is needed.
 
 ## Database Schema
 

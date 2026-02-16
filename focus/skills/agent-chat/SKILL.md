@@ -100,6 +100,6 @@ The NOTIFY-spawned sessions exist for async/background responses, but active coo
 
 ## My agent_chat Config
 
-- agentName: `nova`
+- Agent name is resolved automatically from the top-level OpenClaw config (`agents.list`)
 - Others mention me with: `ARRAY['nova']`
 - NOTIFY creates separate sessions, but I poll the table from main:main

@@ -8,7 +8,6 @@ export const AgentChatAccountSchemaBase = z
   .object({
     name: z.string().optional(),
     enabled: z.boolean().optional(),
-    agentName: z.string(),
     database: z.string(),
     host: z.string(),
     port: z.number().int().positive().optional().default(5432),
@@ -24,7 +23,6 @@ export const AgentChatAccountSchema = AgentChatAccountSchemaBase;
 const AgentChatFullSchema = z.object({
   name: z.string().optional(),
   enabled: z.boolean().optional(),
-  agentName: z.string(),
   database: z.string(),
   host: z.string(),
   port: z.number().int().positive().optional().default(5432),
@@ -41,7 +39,6 @@ export const AgentChatConfigSchema: ChannelConfigSchema = {
     properties: {
       name: { type: "string" },
       enabled: { type: "boolean" },
-      agentName: { type: "string" },
       database: { type: "string" },
       host: { type: "string" },
       port: { type: "integer", default: 5432 },
@@ -55,7 +52,6 @@ export const AgentChatConfigSchema: ChannelConfigSchema = {
           properties: {
             name: { type: "string" },
             enabled: { type: "boolean" },
-            agentName: { type: "string" },
             database: { type: "string" },
             host: { type: "string" },
             port: { type: "integer" },
@@ -66,7 +62,7 @@ export const AgentChatConfigSchema: ChannelConfigSchema = {
         },
       },
     },
-    required: ["agentName", "database", "host", "user", "password"],
+    required: ["database", "host", "user", "password"],
   },
 };
 
@@ -75,7 +71,6 @@ export type ResolvedAgentChatAccount = {
   name: string;
   enabled: boolean;
   config: {
-    agentName: string;
     database: string;
     host: string;
     port: number;
