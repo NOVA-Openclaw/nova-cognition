@@ -805,6 +805,55 @@ else
 fi
 
 # ============================================
+# Part 5b: Configure agent_chat channel
+# ============================================
+echo ""
+echo "Configuring agent_chat channel..."
+
+if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+    jq --arg agentName "$AGENT_NAME" \
+       --arg database "$DB_NAME" \
+       --arg user "$DB_USER" \
+        '.channels.agent_chat = {
+            "enabled": true,
+            "agentName": $agentName,
+            "database": $database,
+            "host": "localhost",
+            "port": 5432,
+            "user": $user,
+            "password": ""
+        }' \
+        "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+        mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+        echo -e "  ${CHECK_MARK} Configured channels.agent_chat in OpenClaw config" || \
+        echo -e "  ${WARNING} Could not configure agent_chat channel"
+else
+    echo -e "  ${WARNING} Cannot configure agent_chat (missing config or jq)"
+fi
+
+# ============================================
+# Part 5c: Generate hooks.token if hooks enabled
+# ============================================
+if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+    HOOKS_ENABLED=$(jq -r '.hooks.enabled // false' "$OPENCLAW_CONFIG" 2>/dev/null)
+    if [ "$HOOKS_ENABLED" = "true" ]; then
+        # Only generate if no token exists yet (don't overwrite on re-run)
+        EXISTING_TOKEN=$(jq -r '.hooks.token // empty' "$OPENCLAW_CONFIG")
+        if [ -z "$EXISTING_TOKEN" ]; then
+            HOOKS_TOKEN=$(openssl rand -hex 32)
+            jq --arg token "$HOOKS_TOKEN" \
+                '.hooks.token = $token' \
+                "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+                echo -e "  ${CHECK_MARK} Generated hooks.token" || \
+                echo -e "  ${WARNING} Could not set hooks.token"
+        else
+            echo -e "  ${CHECK_MARK} hooks.token already exists (preserved)"
+        fi
+    fi
+fi
+
+# ============================================
 # Part 6: Verification
 # ============================================
 echo ""
