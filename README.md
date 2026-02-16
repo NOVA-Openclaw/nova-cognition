@@ -87,6 +87,20 @@ The MCP doesn't do everything itself—it orchestrates. Complex tasks get delega
 
 ---
 
+## Installation
+
+**For humans** (interactive — prompts for Anthropic API key):
+```bash
+./shell-install.sh
+```
+
+**For agents** (non-interactive — key must already be in provider config):
+```bash
+./agent-install.sh
+```
+
+API keys are stored in `~/.openclaw/openclaw.json` at `models.providers.anthropic.apiKey`. The agent installer reads this directly via `jq`; `shell-install.sh` handles the interactive prompt and config writing.
+
 ## Getting Started
 
 1. Define your primary agent (MCP) with a high-capability model
