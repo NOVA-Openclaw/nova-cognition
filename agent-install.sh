@@ -86,6 +86,68 @@ VERIFICATION_PASSED=0
 VERIFICATION_WARNINGS=0
 VERIFICATION_ERRORS=0
 
+# ============================================
+# Helper: sync_directory (hash-based file sync)
+# ============================================
+# Usage: sync_directory <source_dir> <target_dir> [label]
+# Copies only new or changed files (by sha256sum).
+# Honors FORCE_INSTALL: if 1, copies all files unconditionally.
+# Sets SYNC_UPDATED, SYNC_SKIPPED, SYNC_ADDED counts after return.
+SYNC_UPDATED=0
+SYNC_SKIPPED=0
+SYNC_ADDED=0
+
+sync_directory() {
+    local src_dir="$1"
+    local tgt_dir="$2"
+    local label="${3:-files}"
+
+    SYNC_UPDATED=0
+    SYNC_SKIPPED=0
+    SYNC_ADDED=0
+
+    if [ ! -d "$src_dir" ]; then
+        echo -e "  ${WARNING} Source directory not found: $src_dir"
+        return 1
+    fi
+
+    mkdir -p "$tgt_dir"
+
+    # Find all files in source (relative paths)
+    while IFS= read -r -d '' rel_path; do
+        local src_file="$src_dir/$rel_path"
+        local tgt_file="$tgt_dir/$rel_path"
+
+        # Ensure target subdirectory exists
+        mkdir -p "$(dirname "$tgt_file")"
+
+        if [ $FORCE_INSTALL -eq 1 ]; then
+            cp "$src_file" "$tgt_file"
+            echo -e "    ${CHECK_MARK} $rel_path (force-updated)"
+            SYNC_UPDATED=$((SYNC_UPDATED + 1))
+        elif [ ! -f "$tgt_file" ]; then
+            cp "$src_file" "$tgt_file"
+            echo -e "    ${CHECK_MARK} $rel_path (added)"
+            SYNC_ADDED=$((SYNC_ADDED + 1))
+        else
+            local src_hash tgt_hash
+            src_hash=$(sha256sum "$src_file" | awk '{print $1}')
+            tgt_hash=$(sha256sum "$tgt_file" | awk '{print $1}')
+            if [ "$src_hash" != "$tgt_hash" ]; then
+                cp "$src_file" "$tgt_file"
+                echo -e "    ${CHECK_MARK} $rel_path (updated)"
+                SYNC_UPDATED=$((SYNC_UPDATED + 1))
+            else
+                echo -e "    ${INFO} $rel_path (unchanged, skipped)"
+                SYNC_SKIPPED=$((SYNC_SKIPPED + 1))
+            fi
+        fi
+    done < <(cd "$src_dir" && find . -type f -print0 | sed -z 's|^\./||')
+
+    local total=$((SYNC_UPDATED + SYNC_SKIPPED + SYNC_ADDED))
+    echo -e "  Summary: $total $label — $SYNC_ADDED added, $SYNC_UPDATED updated, $SYNC_SKIPPED unchanged"
+}
+
 echo ""
 echo "═══════════════════════════════════════════"
 if [ $VERIFY_ONLY -eq 1 ]; then
@@ -576,45 +638,18 @@ EXTENSION_TARGET="$EXTENSIONS_DIR/agent_chat"
 # Create extensions directory if needed
 mkdir -p "$EXTENSIONS_DIR"
 
-# Check if extension exists
-if [ -d "$EXTENSION_TARGET" ] && [ $FORCE_INSTALL -eq 0 ]; then
-    echo -e "  ${CHECK_MARK} Extension directory exists (use --force to reinstall)"
-else
-    echo "  Installing agent_chat extension..."
-    
-    # Remove existing if force
-    if [ $FORCE_INSTALL -eq 1 ] && [ -d "$EXTENSION_TARGET" ]; then
-        rm -rf "$EXTENSION_TARGET"
-        echo "  Removed existing installation"
+# Sync extension source files (hash-based comparison)
+echo "  Syncing agent_chat extension source files..."
+mkdir -p "$EXTENSION_TARGET"
+sync_directory "$EXTENSION_SOURCE" "$EXTENSION_TARGET" "extension files"
+
+# Ensure main field is set correctly in openclaw.plugin.json
+if [ -f "$EXTENSION_TARGET/openclaw.plugin.json" ]; then
+    if ! grep -q '"main":' "$EXTENSION_TARGET/openclaw.plugin.json"; then
+        sed -i '/"id":/a\  "main": "./dist/index.js",' "$EXTENSION_TARGET/openclaw.plugin.json"
+    elif ! grep -q '"main": "./dist/index.js"' "$EXTENSION_TARGET/openclaw.plugin.json"; then
+        sed -i 's|"main": "[^"]*"|"main": "./dist/index.js"|' "$EXTENSION_TARGET/openclaw.plugin.json"
     fi
-    
-    # Create target directory
-    mkdir -p "$EXTENSION_TARGET"
-    
-    # Copy source files (TypeScript)
-    echo "  Copying source files..."
-    cp -r "$EXTENSION_SOURCE/src" "$EXTENSION_TARGET/"
-    cp "$EXTENSION_SOURCE/index.ts" "$EXTENSION_TARGET/"
-    cp "$EXTENSION_SOURCE/package.json" "$EXTENSION_TARGET/"
-    cp "$EXTENSION_SOURCE/tsconfig.json" "$EXTENSION_TARGET/"
-    
-    # Copy or update openclaw.plugin.json
-    if [ -f "$EXTENSION_SOURCE/openclaw.plugin.json" ]; then
-        cp "$EXTENSION_SOURCE/openclaw.plugin.json" "$EXTENSION_TARGET/"
-    fi
-    
-    # Ensure main field is set correctly
-    if [ -f "$EXTENSION_TARGET/openclaw.plugin.json" ]; then
-        if ! grep -q '"main":' "$EXTENSION_TARGET/openclaw.plugin.json"; then
-            # Add main field if missing
-            sed -i '/"id":/a\  "main": "./dist/index.js",' "$EXTENSION_TARGET/openclaw.plugin.json"
-        elif ! grep -q '"main": "./dist/index.js"' "$EXTENSION_TARGET/openclaw.plugin.json"; then
-            # Update main field if incorrect
-            sed -i 's|"main": "[^"]*"|"main": "./dist/index.js"|' "$EXTENSION_TARGET/openclaw.plugin.json"
-        fi
-    fi
-    
-    echo -e "  ${CHECK_MARK} Source files copied"
 fi
 
 # Install npm dependencies
@@ -700,18 +735,14 @@ for SKILL_NAME in "${SKILLS[@]}"; do
         continue
     fi
     
-    if [ -L "$SKILL_TARGET" ] || [ -e "$SKILL_TARGET" ]; then
-        if [ $FORCE_INSTALL -eq 1 ]; then
-            rm -rf "$SKILL_TARGET"
-            cp -r "$SKILL_SOURCE" "$SKILL_TARGET"
-            echo -e "  ${CHECK_MARK} Reinstalled $SKILL_NAME (copied)"
-        else
-            echo -e "  ${WARNING} $SKILL_NAME already exists (use --force to reinstall)"
-        fi
-    else
-        cp -r "$SKILL_SOURCE" "$SKILL_TARGET"
-        echo -e "  ${CHECK_MARK} Installed skill: $SKILL_NAME (copied)"
+    # Remove legacy symlinks before syncing
+    if [ -L "$SKILL_TARGET" ]; then
+        rm "$SKILL_TARGET"
+        echo -e "  ${INFO} Removed legacy symlink for $SKILL_NAME"
     fi
+
+    echo -e "  Syncing skill: $SKILL_NAME..."
+    sync_directory "$SKILL_SOURCE" "$SKILL_TARGET" "$SKILL_NAME files"
 done
 
 # ============================================
@@ -722,31 +753,31 @@ echo "Bootstrap context system installation..."
 
 BOOTSTRAP_INSTALLER="$SCRIPT_DIR/focus/bootstrap-context/install.sh"
 
-if [ -f "$BOOTSTRAP_INSTALLER" ]; then
-    # Check if already installed
-    if [ -d "$OPENCLAW_DIR/hooks/db-bootstrap-context" ] && [ $FORCE_INSTALL -eq 0 ]; then
-        echo -e "  ${CHECK_MARK} Bootstrap context already installed (use --force to reinstall)"
-    else
-        echo "  Running bootstrap-context installer..."
-        cd "$SCRIPT_DIR/focus/bootstrap-context"
-        
-        # Export database settings
+BOOTSTRAP_SOURCE="$SCRIPT_DIR/focus/bootstrap-context"
+BOOTSTRAP_TARGET="$OPENCLAW_DIR/hooks/db-bootstrap-context"
+
+if [ -d "$BOOTSTRAP_SOURCE" ]; then
+    echo "  Syncing bootstrap-context files..."
+    sync_directory "$BOOTSTRAP_SOURCE" "$BOOTSTRAP_TARGET" "bootstrap-context files"
+
+    # Run the bootstrap-context installer for DB setup (always, it's idempotent)
+    if [ -f "$BOOTSTRAP_TARGET/install.sh" ]; then
+        echo "  Running bootstrap-context DB setup..."
+        cd "$BOOTSTRAP_TARGET"
         export DB_NAME="$DB_NAME"
-        
         BOOTSTRAP_LOG="${TMPDIR:-/tmp}/bootstrap-install-$$.log"
         if bash install.sh > "$BOOTSTRAP_LOG" 2>&1; then
-            echo -e "  ${CHECK_MARK} Bootstrap context installed"
+            echo -e "  ${CHECK_MARK} Bootstrap context DB setup complete"
             rm -f "$BOOTSTRAP_LOG"
         else
-            echo -e "  ${WARNING} Bootstrap context installation had issues"
+            echo -e "  ${WARNING} Bootstrap context DB setup had issues"
             echo "      Log: $BOOTSTRAP_LOG"
             tail -10 "$BOOTSTRAP_LOG"
         fi
-        
         cd "$SCRIPT_DIR"
     fi
 else
-    echo -e "  ${WARNING} Bootstrap context installer not found (skipping)"
+    echo -e "  ${WARNING} Bootstrap context source not found (skipping)"
 fi
 
 # ============================================
