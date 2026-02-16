@@ -113,7 +113,7 @@ sync_directory() {
 
     mkdir -p "$tgt_dir"
 
-    # Find all files in source (relative paths)
+    # Find all files in source (relative paths), excluding node_modules and dist
     while IFS= read -r -d '' rel_path; do
         local src_file="$src_dir/$rel_path"
         local tgt_file="$tgt_dir/$rel_path"
@@ -142,7 +142,7 @@ sync_directory() {
                 SYNC_SKIPPED=$((SYNC_SKIPPED + 1))
             fi
         fi
-    done < <(cd "$src_dir" && find . -type f -print0 | sed -z 's|^\./||')
+    done < <(cd "$src_dir" && find . -type f -not -path '*/node_modules/*' -not -path '*/dist/*' -print0 | sed -z 's|^\./||')
 
     local total=$((SYNC_UPDATED + SYNC_SKIPPED + SYNC_ADDED))
     echo -e "  Summary: $total $label — $SYNC_ADDED added, $SYNC_UPDATED updated, $SYNC_SKIPPED unchanged"
