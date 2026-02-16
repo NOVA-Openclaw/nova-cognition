@@ -825,6 +825,23 @@ if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
         mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
         echo -e "  ${CHECK_MARK} Configured channels.agent_chat in OpenClaw config" || \
         echo -e "  ${WARNING} Could not configure agent_chat channel"
+
+    # Also configure agent_chat plugin with the same connection details
+    jq --arg database "$DB_NAME" \
+       --arg user "$DB_USER" \
+        '.plugins.entries.agent_chat = (.plugins.entries.agent_chat // {}) * {
+            "enabled": true,
+            "config": {
+                "database": $database,
+                "host": "localhost",
+                "user": $user,
+                "password": ""
+            }
+        }' \
+        "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+        mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+        echo -e "  ${CHECK_MARK} Configured plugins.entries.agent_chat in OpenClaw config" || \
+        echo -e "  ${WARNING} Could not configure agent_chat plugin"
 else
     echo -e "  ${WARNING} Cannot configure agent_chat (missing config or jq)"
 fi
