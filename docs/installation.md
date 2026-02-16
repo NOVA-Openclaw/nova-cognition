@@ -109,6 +109,7 @@ In `~/.clawdbot/clawdbot.json`, add agents to the `agents.list` array:
 1. **Primary agent** must have `subagents.allowAgents` listing spawnable agents
 2. **Each subagent** needs an entry in `agents.list` with at least `id` and `model`
 3. **Fallbacks** are optional but recommended for reliability
+4. **Agent chat requires dual config** — both `channels.agent_chat` and `plugins.entries.agent_chat.config` must contain the database connection details. The `agent-install.sh` script handles this automatically, but manual setups must configure both or the gateway will fail plugin validation
 
 ## Step 3: Workspace Setup
 
@@ -192,6 +193,8 @@ For setups where agents use separate databases but need to share message history
 - PostgreSQL logical replication setup
 - Trigger configuration for replicated data  
 - Automatic detection and configuration via `agent-install.sh`
+
+> **Note:** `agent-install.sh` configures both `channels.agent_chat` (channel definition) and `plugins.entries.agent_chat.config` (plugin configuration) with identical connection details. Both are required — the gateway validates plugin config separately from channel config.
 - Troubleshooting replication issues
 
 Example: Graybeard agent using `graybeard_memory` database while replicating messages from `nova_memory`.
