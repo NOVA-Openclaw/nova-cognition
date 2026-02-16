@@ -146,16 +146,8 @@ async function insertOutboundMessage(
 /**
  * Build session label for agent_chat message
  */
-function buildSessionLabel({
-  channel,
-  sender,
-  chatId,
-}: {
-  channel: string;
-  sender: string;
-  chatId: number;
-}) {
-  return `${PLUGIN_ID}:${channel}:${sender}:${chatId}`;
+function buildSessionLabel({ agentName }: { agentName: string }) {
+  return `agent:${agentName}:agent_chat`;
 }
 
 /**
@@ -187,17 +179,20 @@ async function processAgentChatMessage({
 
   log?.info?.(`Processing message ${message.id} from ${message.sender}`);
 
+  // Self-mention guard: prevent infinite loops
+  if (message.sender.toLowerCase() === agentName.toLowerCase()) {
+    log?.debug?.(`Skipping self-mention from ${message.sender}`);
+    await markMessageReceived(client, message.id, agentName);
+    return;
+  }
+
   try {
     // Mark as received first
     await markMessageReceived(client, message.id, agentName);
     log?.debug?.(`Marked message ${message.id} as received`);
 
     // Build session label
-    const sessionLabel = buildSessionLabel({
-      channel: message.channel,
-      sender: message.sender,
-      chatId: message.id,
-    });
+    const sessionLabel = buildSessionLabel({ agentName });
 
     // Format the inbound message envelope
     const envelopeOptions = runtime.channel.reply.resolveEnvelopeFormatOptions(cfg);
