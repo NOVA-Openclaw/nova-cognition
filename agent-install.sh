@@ -811,12 +811,10 @@ echo ""
 echo "Configuring agent_chat channel..."
 
 if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
-    jq --arg agentName "$AGENT_NAME" \
-       --arg database "$DB_NAME" \
+    jq --arg database "$DB_NAME" \
        --arg user "$DB_USER" \
         '.channels.agent_chat = {
             "enabled": true,
-            "agentName": $agentName,
             "database": $database,
             "host": "localhost",
             "port": 5432,

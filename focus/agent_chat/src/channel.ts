@@ -12,6 +12,16 @@ const { Client } = pg;
 
 const PLUGIN_ID = "agent_chat";
 
+/**
+ * Resolve the agent name from the top-level OpenClaw config.
+ * Uses agents.list to find the default agent, then falls back to id.
+ */
+function resolveAgentName(cfg: OpenClawConfig): string {
+  const agents = cfg.agents?.list ?? [];
+  const defaultAgent = agents.find((a) => a.default) ?? agents[0];
+  return defaultAgent?.name ?? defaultAgent?.id ?? "";
+}
+
 // Manual meta definition since "agent_chat" is not in the core channel allowlist
 const meta: Omit<ChannelMeta, "id"> = {
   label: "Agent Chat",
@@ -290,8 +300,17 @@ async function processAgentChatMessage({
 async function startAgentChatMonitor(
   ctx: ChannelGatewayContext<ResolvedAgentChatAccount>,
 ): Promise<void> {
-  const { agentName, pollIntervalMs } = ctx.account.config;
+  const { pollIntervalMs } = ctx.account.config;
+  const agentName = resolveAgentName(ctx.cfg);
   const log = ctx.log;
+
+  if (!agentName) {
+    log?.error?.(
+      `agent_chat: cannot start monitor — no agent name found in top-level config (agents.list). ` +
+      `Please configure agents.list with at least one agent entry that has an id or name.`,
+    );
+    return;
+  }
 
   log?.info?.(
     `Starting monitor for agent: ${agentName} @ ${ctx.account.config.host}:${ctx.account.config.port}/${ctx.account.config.database}`,
@@ -475,7 +494,6 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
           name: accountId || "default",
           enabled: false,
           config: {
-            agentName: "",
             database: "",
             host: "",
             port: 5432,
@@ -497,7 +515,6 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
         name: config.name || normalizedAccountId,
         enabled: config.enabled !== false,
         config: {
-          agentName: config.agentName || "",
           database: config.database || "",
           host: config.host || "",
           port: config.port || 5432,
@@ -512,7 +529,7 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
 
     isConfigured: (account, cfg) =>
       Boolean(
-        account.config.agentName &&
+        resolveAgentName(cfg) &&
           account.config.database &&
           account.config.host &&
           account.config.user &&
@@ -524,13 +541,13 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
       name: account.name,
       enabled: account.enabled,
       configured: Boolean(
-        account.config.agentName &&
+        resolveAgentName(cfg) &&
           account.config.database &&
           account.config.host &&
           account.config.user &&
           account.config.password,
       ),
-      agentName: account.config.agentName,
+      agentName: resolveAgentName(cfg),
       database: account.config.database,
       host: account.config.host,
     }),
@@ -555,9 +572,16 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
         // Extract channel from 'to' parameter (format: "agent_chat:channel" or just "channel")
         const channel = to.includes(":") ? to.split(":").pop() || "default" : to;
 
+        const agentName = resolveAgentName(cfg);
+        if (!agentName) {
+          throw new Error(
+            `agent_chat: cannot send — no agent name found in top-level config (agents.list)`,
+          );
+        }
+
         const result = await insertOutboundMessage(client, {
           channel,
-          sender: account.config.agentName,
+          sender: agentName,
           message: text,
           replyTo: null, // Could be enhanced to track reply_to from context
         });
@@ -596,12 +620,12 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
       database: (snapshot.probe as { database?: string })?.database ?? null,
     }),
 
-    buildAccountSnapshot: ({ account, runtime }) => ({
+    buildAccountSnapshot: ({ account, runtime, cfg }) => ({
       accountId: account.accountId,
       name: account.name,
       enabled: account.enabled,
       configured: Boolean(
-        account.config.agentName &&
+        resolveAgentName(cfg) &&
           account.config.database &&
           account.config.host &&
           account.config.user &&
@@ -613,7 +637,7 @@ export const agentChatPlugin: ChannelPlugin<ResolvedAgentChatAccount> = {
       lastError: runtime?.lastError ?? null,
       // Store custom info in probe
       probe: {
-        agentName: account.config.agentName,
+        agentName: resolveAgentName(cfg),
         database: account.config.database,
       },
     }),
