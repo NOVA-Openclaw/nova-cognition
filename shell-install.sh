@@ -27,5 +27,12 @@ echo "  PGDATABASE=$PGDATABASE"
 echo "  OPENCLAW_WORKSPACE=$OPENCLAW_WORKSPACE"
 echo ""
 
+# Load API keys from openclaw.json if env-loader is available
+ENV_LOADER="$HOME/.openclaw/lib/env-loader.sh"
+if [ -f "$ENV_LOADER" ]; then
+    source "$ENV_LOADER"
+    load_openclaw_env 2>/dev/null || true
+fi
+
 # Call the agent installer
 exec "$(dirname "$0")/agent-install.sh" "$@"
