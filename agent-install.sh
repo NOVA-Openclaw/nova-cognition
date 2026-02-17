@@ -83,6 +83,11 @@ if [ -n "$DB_NAME_OVERRIDE" ]; then
     DB_NAME="$DB_NAME_OVERRIDE"
 fi
 
+# Temp file cleanup
+TMPFILES=()
+cleanup_tmp() { rm -f "${TMPFILES[@]}"; }
+trap cleanup_tmp EXIT
+
 # === Prerequisite check: nova-memory lib files must exist ===
 OPENCLAW_LIB="$HOME/.openclaw/lib"
 REQUIRED_LIB_FILES=("pg-env.sh" "pg_env.py" "pg-env.ts" "env-loader.sh" "env_loader.py")
@@ -508,6 +513,7 @@ else
 
         # Add API key to config using jq
         TMP_CONFIG=$(mktemp)
+        TMPFILES+=("$TMP_CONFIG")
         jq --arg key "$user_api_key" '.env.vars.ANTHROPIC_API_KEY = $key' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"
         mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
 

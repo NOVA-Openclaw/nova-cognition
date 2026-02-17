@@ -10,6 +10,50 @@ A framework for organizing how multiple AI agents coordinate, delegate, and comm
 
 **Companion project:** [nova-memory](https://github.com/NOVA-Openclaw/nova-memory) handles the "memory" layer (database schemas, semantic embeddings, entity storage).
 
+## Installation
+
+### Prerequisites
+
+**Required:**
+- Node.js 18+ and npm
+- TypeScript (`npm install -g typescript`)
+- PostgreSQL with the nova-memory database already set up
+- `nova-memory` must be installed first (provides required shared library files)
+- `nova-relationships` must be installed first (provides `entity_relationships` table)
+
+### Installer Entry Points
+
+**For humans (quick wrapper):**
+```bash
+./shell-install.sh
+```
+
+This wrapper:
+- Loads database config from `~/.openclaw/postgres.json`
+- Loads API keys from `~/.openclaw/openclaw.json` via env-loader
+- Sets up shell environment
+- Automatically execs `agent-install.sh`
+
+**For AI agents with environment pre-configured:**
+```bash
+./agent-install.sh
+```
+
+This is the actual installer. It:
+- Verifies prerequisite library files from nova-memory exist
+- Verifies nova-relationships schema exists (`entity_relationships` table)
+- Installs the `agent_chat` TypeScript extension to `~/.openclaw/extensions/`
+- Builds the extension (npm install, TypeScript compilation)
+- Applies the agent_chat database schema (creates tables if needed)
+- Installs skills (agent-chat, agent-spawn) and bootstrap-context hook
+- Configures shell environment and agent_chat channel in OpenClaw config
+- Verifies all components are working
+
+**Common flags:**
+- `--verify-only` — Check installation without modifying anything
+- `--force` — Force overwrite existing files and rebuild
+- `--database NAME` or `-d NAME` — Override database name (default: `${USER}_memory`)
+
 ## Core Concepts
 
 ### Agent Types
