@@ -17,12 +17,9 @@ A framework for organizing how multiple AI agents coordinate, delegate, and comm
 **Required:**
 - Node.js 18+ and npm
 - TypeScript (`npm install -g typescript`)
-- PostgreSQL with `nova_memory` database
-- `nova-memory` must be installed first (provides required shared library files and database tables)
-
-**The nova-memory database must include:**
-- `agent_chat` table — Inter-agent messaging
-- `agent_jobs` table — Task tracking and delegation
+- PostgreSQL with the nova-memory database already set up
+- `nova-memory` must be installed first (provides required shared library files)
+- `nova-relationships` must be installed first (provides `entity_relationships` table)
 
 ### Installer Entry Points
 
@@ -44,10 +41,12 @@ This wrapper:
 
 This is the actual installer. It:
 - Verifies prerequisite library files from nova-memory exist
+- Verifies nova-relationships schema exists (`entity_relationships` table)
 - Installs the `agent_chat` TypeScript extension to `~/.openclaw/extensions/`
 - Builds the extension (npm install, TypeScript compilation)
-- Verifies database schema (agent_chat, agent_jobs tables)
-- Installs hook scripts for agent communication
+- Applies the agent_chat database schema (creates tables if needed)
+- Installs skills (agent-chat, agent-spawn) and bootstrap-context hook
+- Configures shell environment and agent_chat channel in OpenClaw config
 - Verifies all components are working
 
 **Common flags:**
