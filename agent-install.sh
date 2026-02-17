@@ -68,6 +68,26 @@ if [ -n "$DB_NAME_OVERRIDE" ]; then
     DB_NAME="$DB_NAME_OVERRIDE"
 fi
 
+# === Prerequisite check: nova-memory lib files must exist ===
+OPENCLAW_LIB="$HOME/.openclaw/lib"
+REQUIRED_LIB_FILES=("pg-env.sh" "pg_env.py" "pg-env.ts" "env-loader.sh" "env_loader.py")
+MISSING_FILES=()
+for f in "${REQUIRED_LIB_FILES[@]}"; do
+    if [ ! -f "$OPENCLAW_LIB/$f" ]; then
+        MISSING_FILES+=("$f")
+    fi
+done
+if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+    echo "ERROR: Required library files missing from $OPENCLAW_LIB:" >&2
+    for f in "${MISSING_FILES[@]}"; do
+        echo "  - $f" >&2
+    done
+    echo "" >&2
+    echo "These files are installed by nova-memory. Please install nova-memory first:" >&2
+    echo "  cd ~/clawd/nova-memory && bash agent-install.sh" >&2
+    exit 1
+fi
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
