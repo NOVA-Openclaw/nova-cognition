@@ -6,9 +6,24 @@ set -e
 
 VERSION="1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Use current OS user for both DB user and name
+
+# Load database config from postgres.json if available
+PG_CONFIG="$HOME/.openclaw/postgres.json"
+if [ -f "$PG_CONFIG" ] && command -v jq &>/dev/null; then
+    _pg_val() { jq -r ".$1 // empty" "$PG_CONFIG" 2>/dev/null; }
+    val=$(_pg_val host);     [ -z "${PGHOST:-}" ]     && [ -n "$val" ] && export PGHOST="$val"
+    val=$(_pg_val port);     [ -z "${PGPORT:-}" ]     && [ -n "$val" ] && export PGPORT="$val"
+    val=$(_pg_val database); [ -z "${PGDATABASE:-}" ] && [ -n "$val" ] && export PGDATABASE="$val"
+    val=$(_pg_val user);     [ -z "${PGUSER:-}" ]     && [ -n "$val" ] && export PGUSER="$val"
+    val=$(_pg_val password); [ -z "${PGPASSWORD:-}" ] && [ -n "$val" ] && export PGPASSWORD="$val"
+    export PGHOST="${PGHOST:-localhost}"
+    export PGPORT="${PGPORT:-5432}"
+    export PGUSER="${PGUSER:-$(whoami)}"
+fi
+
+# Now derive DB_USER and DB_NAME from the loaded config
 DB_USER="${PGUSER:-$(whoami)}"
-DB_NAME="${DB_USER//-/_}_memory"  # Replace hyphens with underscores (nova-staging → nova_staging_memory)
+DB_NAME="${PGDATABASE:-${DB_USER//-/_}_memory}"
 WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-coder}"
 OPENCLAW_DIR="$HOME/.openclaw"
 OPENCLAW_PROJECTS="$OPENCLAW_DIR/projects"
