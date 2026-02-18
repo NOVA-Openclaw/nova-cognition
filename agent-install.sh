@@ -791,9 +791,17 @@ if [ -d "$AGENT_CONFIG_DB_SOURCE" ]; then
     echo "  Syncing agent-config-db files..."
     sync_directory "$AGENT_CONFIG_DB_SOURCE" "$AGENT_CONFIG_DB_TARGET" "agent-config-db files"
 
-    # Enable the hook in openclaw.json config
+    # Enable hooks system and the specific hook in openclaw.json config
     if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
         echo "  Enabling agent-config-db hook in config..."
+        
+        # First ensure hooks.enabled = true (required for any hook to work)
+        jq '.hooks.enabled = true' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+            mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+            echo -e "  ${CHECK_MARK} hooks.enabled = true" || \
+            echo -e "  ${WARNING} Could not enable hooks system"
+        
+        # Then enable the specific agent-config-db hook
         jq '.hooks.internal.entries["agent-config-db"] = {"enabled": true}' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
             mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
             echo -e "  ${CHECK_MARK} agent-config-db hook enabled in config" || \
