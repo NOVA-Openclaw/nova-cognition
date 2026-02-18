@@ -273,6 +273,14 @@ verify_files() {
         VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
     fi
     
+    # Check agent-config-db installation
+    if [ -d "$OPENCLAW_DIR/hooks/agent-config-db" ]; then
+        echo -e "  ${CHECK_MARK} Agent config DB hook installed"
+    else
+        echo -e "  ${CROSS_MARK} Agent config DB hook not installed"
+        VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
+    fi
+    
     return 0
 }
 
@@ -771,6 +779,33 @@ else
 fi
 
 # ============================================
+# Part 4.5: Agent Config DB Hook
+# ============================================
+echo ""
+echo "Agent config database hook installation..."
+
+AGENT_CONFIG_DB_SOURCE="$SCRIPT_DIR/focus/agent-config-db"
+AGENT_CONFIG_DB_TARGET="$OPENCLAW_DIR/hooks/agent-config-db"
+
+if [ -d "$AGENT_CONFIG_DB_SOURCE" ]; then
+    echo "  Syncing agent-config-db files..."
+    sync_directory "$AGENT_CONFIG_DB_SOURCE" "$AGENT_CONFIG_DB_TARGET" "agent-config-db files"
+
+    # Enable the hook in openclaw.json config
+    if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+        echo "  Enabling agent-config-db hook in config..."
+        jq '.hooks.internal.entries["agent-config-db"] = {"enabled": true}' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+            mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+            echo -e "  ${CHECK_MARK} agent-config-db hook enabled in config" || \
+            echo -e "  ${WARNING} Could not enable agent-config-db hook in config"
+    else
+        echo -e "  ${WARNING} Cannot enable hook (missing config or jq)"
+    fi
+else
+    echo -e "  ${WARNING} Agent config DB source not found (skipping)"
+fi
+
+# ============================================
 # Part 5: Shell Environment Setup
 # ============================================
 echo ""
@@ -937,6 +972,7 @@ echo "  • agent_chat extension (TypeScript) → $EXTENSIONS_DIR/agent_chat"
 echo "  • agent-chat skill → $WORKSPACE/skills/agent-chat"
 echo "  • agent-spawn skill → $WORKSPACE/skills/agent-spawn"
 echo "  • bootstrap-context system → $OPENCLAW_DIR/hooks/db-bootstrap-context"
+echo "  • agent-config-db hook → $OPENCLAW_DIR/hooks/agent-config-db"
 echo "  • shell-aliases.sh → $NOVA_DIR/shell-aliases.sh"
 echo "  • ~/.bash_env configured"
 echo ""
