@@ -76,10 +76,9 @@ export function buildAgentsJson(rows: AgentRow[]): AgentsJson {
         : row.model,
     };
 
-    // Include thinking if set
-    if (row.thinking) {
-      entry.thinking = row.thinking;
-    }
+    // Note: 'thinking' is not a valid per-agent config key in OpenClaw's schema.
+    // Thinking level is set at spawn time via sessions_spawn(thinking=...), not in agent definitions.
+    // The DB 'thinking' column stores the preferred level for reference, but it's not written to agents.json.
 
     list.push(entry);
   }
