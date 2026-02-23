@@ -1,4 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { createRequire } from "node:module";
 import { agentChatPlugin } from "./src/channel.js";
 import { setAgentChatRuntime } from "./src/runtime.js";
 import { AgentChatConfigSchema } from "./src/config.js";
@@ -11,8 +12,9 @@ const plugin = {
   register(api: OpenClawPluginApi) {
     const log = api.logger;
 
-    // --- Pre-flight: verify 'pg' dependency is resolvable ---
+    // --- Pre-flight: verify 'pg' dependency is resolvable (ESM-compatible) ---
     try {
+      const require = createRequire(import.meta.url);
       require.resolve("pg");
       log.debug("agent_chat: pg dependency resolved successfully");
     } catch {

@@ -11,6 +11,7 @@ import type {
   OpenClawPluginApi,
   OpenClawPluginServiceContext,
 } from "openclaw/plugin-sdk";
+import { createRequire } from "node:module";
 import { syncAgentsConfig } from "./src/sync.js";
 import path from "node:path";
 import os from "node:os";
@@ -212,8 +213,9 @@ const plugin = {
   register(api: OpenClawPluginApi) {
     const log = api.logger;
 
-    // Verify pg is available
+    // Verify pg is available (use createRequire for ESM compatibility)
     try {
+      const require = createRequire(import.meta.url);
       require.resolve("pg");
       log.debug?.("agent_config_sync: pg dependency resolved");
     } catch {
