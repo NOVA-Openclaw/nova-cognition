@@ -10,13 +10,13 @@ const plugin = {
   description: "PostgreSQL-based inter-agent communication channel",
   configSchema: AgentChatConfigSchema,
   register(api: OpenClawPluginApi) {
-    const log = api.logger;
+    const log = api.logger!;
 
     // --- Pre-flight: verify 'pg' dependency is resolvable (ESM-compatible) ---
     try {
       const require = createRequire(import.meta.url);
       require.resolve("pg");
-      log.debug("agent_chat: pg dependency resolved successfully");
+      log.debug?.("agent_chat: pg dependency resolved successfully");
     } catch {
       log.error(
         "agent_chat: FATAL — 'pg' module not found. " +
