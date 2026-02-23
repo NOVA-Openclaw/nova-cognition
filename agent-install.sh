@@ -700,6 +700,9 @@ else
     fi
 fi
 
+# Change to extension directory for build (all relative paths below expect this)
+cd "$EXTENSION_TARGET"
+
 # Build TypeScript
 echo ""
 echo "  Building TypeScript..."
