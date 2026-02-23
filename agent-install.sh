@@ -928,6 +928,20 @@ if [ -d "$AGENT_CONFIG_SYNC_SOURCE" ]; then
         fi
     fi
 
+    # Set maxSpawnDepth if not already configured (default 1 blocks nested spawn chains)
+    if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+        EXISTING_DEPTH=$(jq -r '.agents.defaults.subagents.maxSpawnDepth // empty' "$OPENCLAW_CONFIG" 2>/dev/null)
+        if [ -z "$EXISTING_DEPTH" ]; then
+            echo "  Setting agents.defaults.subagents.maxSpawnDepth = 5 (supports nested spawns)..."
+            jq '.agents.defaults.subagents.maxSpawnDepth = 5' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+                echo -e "  ${CHECK_MARK} Set maxSpawnDepth = 5" || \
+                echo -e "  ${WARNING} Could not set maxSpawnDepth"
+        else
+            echo -e "  ${CHECK_MARK} maxSpawnDepth already set to $EXISTING_DEPTH"
+        fi
+    fi
+
     # Generate initial agents.json from current DB state
     echo "  Generating initial agents.json from database..."
     AGENTS_JSON="$OPENCLAW_DIR/agents.json"
