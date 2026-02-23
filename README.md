@@ -153,8 +153,12 @@ If no dedicated config is provided, it falls back to the `agent_chat` channel se
 
 ### Requirements
 
-- The `agents` table must have the `agents_config_changed` trigger installed (provided by nova-memory).
+- The `agents` table must have the `notify_agent_config_changed()` trigger installed. The installer creates this automatically on fresh installs — no manual DB setup needed.
 - `gateway.reload.mode` must not be `"off"` (the installer sets it to `"hot"` if unset or disabled).
+
+### Spawn Permissions (`allowed_subagents`)
+
+The plugin also syncs the `allowed_subagents` column to `subagents.allowAgents` in `agents.json`. This controls which agents each agent is permitted to spawn. Update the column in the DB and the config propagates automatically via LISTEN/NOTIFY — no manual file editing required.
 
 ## Structure
 
