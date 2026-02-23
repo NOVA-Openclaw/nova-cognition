@@ -158,7 +158,14 @@ If no dedicated config is provided, it falls back to the `agent_chat` channel se
 
 ### Spawn Permissions (`allowed_subagents`)
 
-The plugin also syncs the `allowed_subagents` column to `subagents.allowAgents` in `agents.json`. This controls which agents each agent is permitted to spawn. Update the column in the DB and the config propagates automatically via LISTEN/NOTIFY — no manual file editing required.
+The plugin also syncs the `allowed_subagents` column to `subagents.allowAgents` in `agents.json`. This controls which agents each agent is permitted to spawn:
+
+- **NULL or empty array** → `subagents.allowAgents` omitted from agents.json → defers to hand-configured value in `openclaw.json` (if any). If neither is set, OpenClaw defaults to empty allowlist = **no spawns allowed**.
+- **Populated array** → synced to `agents.json`, overrides any hand-configured value via `$include` deep-merge. Only listed agents can be spawned.
+
+**Important:** Every agent that needs to spawn subagents must have `allowed_subagents` set in the DB (or a hand-configured `allowAgents` in `openclaw.json`). There is no implicit "allow all" — permissions must be explicit.
+
+Update the column in the DB and the config propagates automatically via LISTEN/NOTIFY — no manual file editing required.
 
 ## Structure
 
