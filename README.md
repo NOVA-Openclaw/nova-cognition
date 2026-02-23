@@ -52,7 +52,11 @@ This is the actual installer. It:
 **Common flags:**
 - `--verify-only` — Check installation without modifying anything
 - `--force` — Force overwrite existing files and rebuild
+- `--no-restart` — Skip automatic gateway restart after install (by default, the installer restarts the gateway if it's running so plugin changes take effect immediately)
 - `--database NAME` or `-d NAME` — Override database name (default: `${USER}_memory`)
+
+**Dependency management:**
+The `pg` (PostgreSQL client) module is installed to a shared location (`~/.openclaw/node_modules/`) rather than per-extension. This avoids duplicate installs and ensures all extensions that need `pg` resolve it from a single place. If an older per-extension `node_modules/pg` is detected, the installer removes it automatically during migration.
 
 ## Core Concepts
 
