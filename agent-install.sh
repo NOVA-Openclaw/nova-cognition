@@ -996,6 +996,52 @@ else
     echo -e "  ${WARNING} Agent config sync source not found (skipping)"
 fi
 
+# ── Install/update DB trigger for agent_config_sync ──
+echo ""
+echo "  Installing agent config notification trigger..."
+
+psql -U "$DB_USER" -d "$DB_NAME" -q <<'TRIGGER_SQL'
+CREATE OR REPLACE FUNCTION notify_agent_config_changed()
+RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        PERFORM pg_notify('agent_config_changed', json_build_object(
+            'agent_id', OLD.id,
+            'agent_name', OLD.name,
+            'operation', TG_OP
+        )::text);
+        RETURN OLD;
+    END IF;
+
+    IF TG_OP = 'INSERT' OR
+       OLD.model IS DISTINCT FROM NEW.model OR
+       OLD.fallback_models IS DISTINCT FROM NEW.fallback_models OR
+       OLD.thinking IS DISTINCT FROM NEW.thinking OR
+       OLD.instance_type IS DISTINCT FROM NEW.instance_type OR
+       OLD.allowed_subagents IS DISTINCT FROM NEW.allowed_subagents THEN
+        PERFORM pg_notify('agent_config_changed', json_build_object(
+            'agent_id', NEW.id,
+            'agent_name', NEW.name,
+            'operation', TG_OP
+        )::text);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger if not exists (drop + create for idempotency)
+DROP TRIGGER IF EXISTS agent_config_changed ON agents;
+CREATE TRIGGER agent_config_changed
+    AFTER INSERT OR UPDATE OR DELETE ON agents
+    FOR EACH ROW EXECUTE FUNCTION notify_agent_config_changed();
+TRIGGER_SQL
+
+if [ $? -eq 0 ]; then
+    echo -e "  ${CHECK_MARK} Agent config notification trigger installed"
+else
+    echo -e "  ${CROSS_MARK} Failed to install agent config notification trigger"
+fi
+
 # ============================================
 # Part 5: Shell Environment Setup
 # ============================================

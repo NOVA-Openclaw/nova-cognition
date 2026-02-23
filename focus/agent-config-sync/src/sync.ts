@@ -47,10 +47,6 @@ const AGENTS_QUERY = `
   ORDER BY name;
 `;
 
-// NOTE: Trigger dependency — Newhart needs to run:
-// ALTER the notify_agent_config_changed() function to include:
-// OR OLD.allowed_subagents IS DISTINCT FROM NEW.allowed_subagents
-
 // ── Build ───────────────────────────────────────────────────────────────────
 
 /**
