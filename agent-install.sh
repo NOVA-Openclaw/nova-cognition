@@ -283,12 +283,26 @@ verify_files() {
         VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
     fi
     
-    # Check agent-config-db installation
-    if [ -d "$OPENCLAW_DIR/hooks/agent-config-db" ]; then
-        echo -e "  ${CHECK_MARK} Agent config DB hook installed"
+    # Check agent-config-sync extension
+    if [ -d "$EXTENSIONS_DIR/agent_config_sync" ]; then
+        echo -e "  ${CHECK_MARK} agent_config_sync extension directory exists"
+        if [ -f "$EXTENSIONS_DIR/agent_config_sync/dist/index.js" ]; then
+            echo -e "  ${CHECK_MARK} agent_config_sync compiled (dist/index.js exists)"
+        else
+            echo -e "  ${CROSS_MARK} agent_config_sync not compiled"
+            VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
+        fi
     else
-        echo -e "  ${CROSS_MARK} Agent config DB hook not installed"
+        echo -e "  ${CROSS_MARK} agent_config_sync extension not installed"
         VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
+    fi
+    
+    # Check agents.json exists
+    if [ -f "$OPENCLAW_DIR/agents.json" ]; then
+        echo -e "  ${CHECK_MARK} agents.json exists"
+    else
+        echo -e "  ${WARNING} agents.json not found (will be generated on gateway start)"
+        VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
     fi
     
     return 0
@@ -794,38 +808,189 @@ else
 fi
 
 # ============================================
-# Part 4.5: Agent Config DB Hook
+# Part 4.5: Agent Config Sync Extension (DB → agents.json)
 # ============================================
 echo ""
-echo "Agent config database hook installation..."
+echo "Agent config sync extension installation..."
 
-AGENT_CONFIG_DB_SOURCE="$SCRIPT_DIR/focus/agent-config-db"
-AGENT_CONFIG_DB_TARGET="$OPENCLAW_DIR/hooks/agent-config-db"
+AGENT_CONFIG_SYNC_SOURCE="$SCRIPT_DIR/focus/agent-config-sync"
+AGENT_CONFIG_SYNC_TARGET="$EXTENSIONS_DIR/agent_config_sync"
 
-if [ -d "$AGENT_CONFIG_DB_SOURCE" ]; then
-    echo "  Syncing agent-config-db files..."
-    sync_directory "$AGENT_CONFIG_DB_SOURCE" "$AGENT_CONFIG_DB_TARGET" "agent-config-db files"
+if [ -d "$AGENT_CONFIG_SYNC_SOURCE" ]; then
+    echo "  Syncing agent-config-sync extension files..."
+    mkdir -p "$AGENT_CONFIG_SYNC_TARGET"
+    sync_directory "$AGENT_CONFIG_SYNC_SOURCE" "$AGENT_CONFIG_SYNC_TARGET" "agent-config-sync files"
 
-    # Enable hooks system and the specific hook in openclaw.json config
-    if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
-        echo "  Enabling agent-config-db hook in config..."
-        
-        # First ensure hooks.enabled = true (required for any hook to work)
-        jq '.hooks.enabled = true' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
-            mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
-            echo -e "  ${CHECK_MARK} hooks.enabled = true" || \
-            echo -e "  ${WARNING} Could not enable hooks system"
-        
-        # Then enable the specific agent-config-db hook
-        jq '.hooks.internal.entries["agent-config-db"] = {"enabled": true}' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
-            mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
-            echo -e "  ${CHECK_MARK} agent-config-db hook enabled in config" || \
-            echo -e "  ${WARNING} Could not enable agent-config-db hook in config"
+    # Build TypeScript
+    echo "  Building agent_config_sync TypeScript..."
+    cd "$AGENT_CONFIG_SYNC_TARGET"
+    
+    # Install dependencies (shares pg with agent_chat from ~/.openclaw/node_modules)
+    if [ ! -d "node_modules" ] || [ $FORCE_INSTALL -eq 1 ]; then
+        NPM_INSTALL_LOG="${TMPDIR:-/tmp}/npm-install-config-sync-$$.log"
+        if npm install > "$NPM_INSTALL_LOG" 2>&1; then
+            echo -e "  ${CHECK_MARK} Dependencies installed"
+            rm -f "$NPM_INSTALL_LOG"
+        else
+            echo -e "  ${WARNING} npm install had issues (may use shared node_modules)"
+            rm -f "$NPM_INSTALL_LOG"
+        fi
+    fi
+
+    NPM_BUILD_LOG="${TMPDIR:-/tmp}/npm-build-config-sync-$$.log"
+    if npm run build > "$NPM_BUILD_LOG" 2>&1; then
+        echo -e "  ${CHECK_MARK} agent_config_sync build completed"
+        rm -f "$NPM_BUILD_LOG"
     else
-        echo -e "  ${WARNING} Cannot enable hook (missing config or jq)"
+        echo -e "  ${CROSS_MARK} agent_config_sync build failed"
+        echo "      Log: $NPM_BUILD_LOG"
+        tail -20 "$NPM_BUILD_LOG"
+    fi
+    
+    cd "$SCRIPT_DIR"
+
+    # Remove legacy agent-config-db hook if it exists
+    if [ -d "$OPENCLAW_DIR/hooks/agent-config-db" ]; then
+        echo "  Removing legacy agent-config-db hook..."
+        rm -rf "$OPENCLAW_DIR/hooks/agent-config-db"
+        echo -e "  ${CHECK_MARK} Removed agent-config-db hook"
+    fi
+
+    # Remove agent-config-db hook config entry if present
+    if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+        if jq -e '.hooks.internal.entries["agent-config-db"]' "$OPENCLAW_CONFIG" &>/dev/null; then
+            jq 'del(.hooks.internal.entries["agent-config-db"])' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+                echo -e "  ${CHECK_MARK} Removed agent-config-db hook from config" || \
+                echo -e "  ${WARNING} Could not remove agent-config-db hook from config"
+        fi
+    fi
+
+    # Enable agent_config_sync plugin in openclaw.json
+    if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+        echo "  Enabling agent_config_sync plugin in config..."
+        
+        jq --arg database "$DB_NAME" \
+           --arg user "$DB_USER" \
+            '.plugins.entries.agent_config_sync = (.plugins.entries.agent_config_sync // {}) * {
+                "enabled": true,
+                "config": {
+                    "database": $database,
+                    "host": "localhost",
+                    "port": 5432,
+                    "user": $user,
+                    "password": ""
+                }
+            }' \
+            "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+            mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+            echo -e "  ${CHECK_MARK} agent_config_sync plugin enabled in config" || \
+            echo -e "  ${WARNING} Could not enable agent_config_sync plugin in config"
+    else
+        echo -e "  ${WARNING} Cannot enable plugin (missing config or jq)"
+    fi
+
+    # Add "$include": "./agents.json" to openclaw.json if not already present
+    if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+        EXISTING_INCLUDE=$(jq -r '.["$include"] // empty' "$OPENCLAW_CONFIG" 2>/dev/null)
+        if [ -z "$EXISTING_INCLUDE" ]; then
+            echo "  Adding \$include directive for agents.json..."
+            jq '.["$include"] = "./agents.json"' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+                echo -e "  ${CHECK_MARK} Added \"\$include\": \"./agents.json\" to openclaw.json" || \
+                echo -e "  ${WARNING} Could not add \$include directive"
+        else
+            echo -e "  ${CHECK_MARK} \$include already configured: $EXISTING_INCLUDE"
+        fi
+    fi
+
+    # Ensure gateway.reload.mode is NOT "off" — file watching is required for config sync
+    if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+        EXISTING_MODE=$(jq -r '.gateway.reload.mode // empty' "$OPENCLAW_CONFIG" 2>/dev/null)
+        if [ -z "$EXISTING_MODE" ]; then
+            echo "  Setting gateway.reload.mode = \"hot\" (required for config sync)..."
+            jq '.gateway.reload.mode = "hot"' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+                echo -e "  ${CHECK_MARK} Set gateway.reload.mode = \"hot\"" || \
+                echo -e "  ${WARNING} Could not set gateway.reload.mode"
+        elif [ "$EXISTING_MODE" = "off" ]; then
+            echo -e "  ${WARNING} gateway.reload.mode is \"off\" — config sync requires file watching!"
+            echo "  Changing gateway.reload.mode from \"off\" to \"hot\"..."
+            jq '.gateway.reload.mode = "hot"' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+                echo -e "  ${CHECK_MARK} Set gateway.reload.mode = \"hot\"" || \
+                echo -e "  ${WARNING} Could not set gateway.reload.mode"
+        else
+            echo -e "  ${CHECK_MARK} gateway.reload.mode = \"$EXISTING_MODE\" (file watching enabled)"
+        fi
+    fi
+
+    # Generate initial agents.json from current DB state
+    echo "  Generating initial agents.json from database..."
+    AGENTS_JSON="$OPENCLAW_DIR/agents.json"
+    AGENTS_JSON_TMP="${AGENTS_JSON}.tmp.$$"
+    
+    INITIAL_SYNC_QUERY="
+        SELECT json_build_object(
+            'agents', json_build_object(
+                'defaults', json_build_object(
+                    'models', (
+                        SELECT COALESCE(json_object_agg(m, '{}'::json ORDER BY m), '{}'::json)
+                        FROM (
+                            SELECT DISTINCT unnest(
+                                ARRAY[model] || COALESCE(fallback_models, ARRAY[]::text[])
+                            ) AS m
+                            FROM agents
+                            WHERE instance_type IN ('primary', 'subagent')
+                              AND model IS NOT NULL
+                        ) sub
+                    )
+                ),
+                'list', COALESCE((
+                    SELECT json_agg(
+                        CASE
+                            WHEN fallback_models IS NOT NULL AND array_length(fallback_models, 1) > 0 THEN
+                                json_build_object(
+                                    'id', name,
+                                    'model', json_build_object(
+                                        'primary', model,
+                                        'fallbacks', to_json(fallback_models)
+                                    )
+                                ) || CASE WHEN thinking IS NOT NULL THEN json_build_object('thinking', thinking) ELSE '{}'::json END
+                            ELSE
+                                json_build_object('id', name, 'model', model)
+                                || CASE WHEN thinking IS NOT NULL THEN json_build_object('thinking', thinking) ELSE '{}'::json END
+                        END
+                        ORDER BY name
+                    )
+                    FROM agents
+                    WHERE instance_type IN ('primary', 'subagent')
+                      AND model IS NOT NULL
+                ), '[]'::json)
+            )
+        )
+    "
+    
+    if AGENTS_DATA=$(psql -U "$DB_USER" -d "$DB_NAME" -tAc "$INITIAL_SYNC_QUERY" 2>/dev/null); then
+        if [ -n "$AGENTS_DATA" ] && [ "$AGENTS_DATA" != "null" ]; then
+            echo "$AGENTS_DATA" | jq '.' > "$AGENTS_JSON_TMP" 2>/dev/null && \
+                mv "$AGENTS_JSON_TMP" "$AGENTS_JSON" && \
+                echo -e "  ${CHECK_MARK} Generated initial agents.json from DB" || \
+                { echo -e "  ${WARNING} Could not write agents.json"; rm -f "$AGENTS_JSON_TMP"; }
+        else
+            # Write empty but valid agents.json
+            echo '{"agents":{"defaults":{"models":{}},"list":[]}}' | jq '.' > "$AGENTS_JSON_TMP" && \
+                mv "$AGENTS_JSON_TMP" "$AGENTS_JSON" && \
+                echo -e "  ${CHECK_MARK} Generated empty agents.json (no agents in DB)" || \
+                { echo -e "  ${WARNING} Could not write agents.json"; rm -f "$AGENTS_JSON_TMP"; }
+        fi
+    else
+        echo -e "  ${WARNING} Could not query DB for initial agents.json (will be generated on gateway start)"
+        # Write empty but valid agents.json as fallback
+        echo '{"agents":{"defaults":{"models":{}},"list":[]}}' | jq '.' > "$AGENTS_JSON" 2>/dev/null || true
     fi
 else
-    echo -e "  ${WARNING} Agent config DB source not found (skipping)"
+    echo -e "  ${WARNING} Agent config sync source not found (skipping)"
 fi
 
 # ============================================
@@ -992,10 +1157,11 @@ echo ""
 
 echo "Installed components:"
 echo "  • agent_chat extension (TypeScript) → $EXTENSIONS_DIR/agent_chat"
+echo "  • agent_config_sync extension → $EXTENSIONS_DIR/agent_config_sync"
 echo "  • agent-chat skill → $WORKSPACE/skills/agent-chat"
 echo "  • agent-spawn skill → $WORKSPACE/skills/agent-spawn"
 echo "  • bootstrap-context system → $OPENCLAW_DIR/hooks/db-bootstrap-context"
-echo "  • agent-config-db hook → $OPENCLAW_DIR/hooks/agent-config-db"
+echo "  • agents.json (DB-synced config) → $OPENCLAW_DIR/agents.json"
 echo "  • shell-aliases.sh → $NOVA_DIR/shell-aliases.sh"
 echo "  • ~/.bash_env configured"
 echo ""

@@ -76,6 +76,86 @@ The `pg` (PostgreSQL client) module is installed to a shared location (`~/.openc
 - **Inter-Agent Communication** - Protocols for agent collaboration
 - **Jobs System** - Task tracking for reliable work handoffs between agents
 
+## Agent Config Sync (DB → Config)
+
+The **`agent-config-sync`** extension plugin keeps OpenClaw's agent model configuration in sync with the `agents` table in PostgreSQL — no manual config editing required.
+
+### How It Works
+
+1. **DB is the source of truth** — Agent `model`, `fallback_models`, and `thinking` settings are managed in the `agents` table (via nova-memory).
+2. **LISTEN/NOTIFY** — The plugin opens a persistent PostgreSQL connection and runs `LISTEN agent_config_changed`. A database trigger fires `pg_notify('agent_config_changed', ...)` whenever relevant columns change.
+3. **Writes `agents.json`** — On each notification (and once at gateway startup), the plugin queries the `agents` table and writes `~/.openclaw/agents.json` atomically (temp file + `rename(2)`).
+4. **Hot-reload via `$include`** — `openclaw.json` includes `"$include": "./agents.json"`. The gateway's file watcher detects the change and hot-reloads the `agents.*` config keys — no gateway restart needed.
+
+### `agents.json` Format
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "models": {
+        "openrouter/anthropic/claude-opus-4.6": {},
+        "openrouter/google/gemini-3-flash-preview": {}
+      }
+    },
+    "list": [
+      {
+        "id": "coder",
+        "model": {
+          "primary": "openrouter/anthropic/claude-sonnet-4.6",
+          "fallbacks": ["openrouter/openai/gpt-5.2-codex"]
+        }
+      },
+      {
+        "id": "gem",
+        "model": "openrouter/google/gemini-3-flash-preview",
+        "thinking": "on"
+      }
+    ]
+  }
+}
+```
+
+- **`defaults.models`** — Allow-list of all unique models (primaries + fallbacks).
+- **`list`** — Per-agent config. `model` is a plain string when there are no fallbacks, or an object with `primary`/`fallbacks` when fallbacks exist.
+- Agents with `instance_type = 'peer'` are excluded (peers run their own gateways).
+
+### Replaces: `agent-config-db` Hook
+
+This plugin supersedes the older `agent-config-db` pre-spawn/pre-run hook. The hook intercepted every spawn and agent run to query the DB synchronously — it worked, but added latency to every operation and was fragile under connection failures. The new approach syncs once (and on change), keeping config always warm in the file system.
+
+The installer automatically removes the legacy hook and its config entry during installation.
+
+### Plugin Configuration
+
+The plugin reads its database connection from `openclaw.json`:
+
+```jsonc
+{
+  "plugins": {
+    "entries": {
+      "agent_config_sync": {
+        "enabled": true,
+        "config": {
+          "database": "nova_memory",
+          "host": "localhost",
+          "port": 5432,
+          "user": "nova",
+          "password": ""
+        }
+      }
+    }
+  }
+}
+```
+
+If no dedicated config is provided, it falls back to the `agent_chat` channel settings.
+
+### Requirements
+
+- The `agents` table must have the `agents_config_changed` trigger installed (provided by nova-memory).
+- `gateway.reload.mode` must not be `"off"` (the installer sets it to `"hot"` if unset or disabled).
+
 ## Structure
 
 ```
@@ -87,6 +167,7 @@ nova-cognition/
 │   ├── agents/              # Agent organization patterns
 │   │   ├── subagents/       # Subagent role definitions
 │   │   └── peers/           # Peer agent protocols
+│   ├── agent-config-sync/   # DB→Config sync extension plugin
 │   ├── templates/           # SOUL.md, AGENTS.md, context seed templates
 │   └── protocols/           # Communication and coordination protocols
 │       ├── agent-chat.md    # Inter-agent messaging protocol
