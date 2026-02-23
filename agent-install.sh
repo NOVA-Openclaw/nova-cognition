@@ -32,6 +32,7 @@ EXTENSIONS_DIR="$OPENCLAW_DIR/extensions"
 # Parse arguments
 VERIFY_ONLY=0
 FORCE_INSTALL=0
+NO_RESTART=0
 DB_NAME_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
@@ -44,6 +45,10 @@ while [[ $# -gt 0 ]]; do
             FORCE_INSTALL=1
             shift
             ;;
+        --no-restart)
+            NO_RESTART=1
+            shift
+            ;;
         --database|-d)
             DB_NAME_OVERRIDE="$2"
             shift 2
@@ -54,6 +59,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --verify-only         Check installation without modifying anything"
             echo "  --force               Force overwrite existing files"
+            echo "  --no-restart          Skip automatic gateway restart after install"
             echo "  --database, -d NAME   Override database name (default: \${USER}_memory)"
             echo "  --help                Show this help message"
             echo ""
@@ -63,6 +69,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 -d nova_memory               # Short form"
             echo "  $0 --verify-only                # Check installation status"
             echo "  $0 --force                      # Force reinstall"
+            echo "  $0 --no-restart                 # Install without restarting gateway"
             echo ""
             echo "Prerequisites:"
             echo "  - Node.js 18+ and npm"
@@ -238,11 +245,14 @@ verify_files() {
             VERIFICATION_ERRORS=$((VERIFICATION_ERRORS + 1))
         fi
         
-        # Check node_modules
-        if [ -d "$EXTENSIONS_DIR/agent_chat/node_modules" ]; then
-            echo -e "  ${CHECK_MARK} agent_chat npm dependencies installed"
+        # Check pg in shared node_modules
+        if [ -d "$OPENCLAW_DIR/node_modules/pg" ]; then
+            echo -e "  ${CHECK_MARK} pg installed in shared node_modules ($OPENCLAW_DIR/node_modules/)"
+        elif [ -d "$EXTENSIONS_DIR/agent_chat/node_modules/pg" ]; then
+            echo -e "  ${WARNING} pg installed in per-extension node_modules (should migrate to shared $OPENCLAW_DIR/node_modules/)"
+            VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
         else
-            echo -e "  ${WARNING} agent_chat npm dependencies not installed"
+            echo -e "  ${WARNING} pg dependency not installed"
             VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
         fi
     else
@@ -650,21 +660,26 @@ if [ -f "$EXTENSION_TARGET/openclaw.plugin.json" ]; then
     fi
 fi
 
-# Install npm dependencies
+# Install pg dependency to shared ~/.openclaw/node_modules/
 echo ""
-echo "  Installing npm dependencies..."
-cd "$EXTENSION_TARGET"
+echo "  Installing pg to shared $OPENCLAW_DIR/node_modules/..."
 
-if [ -d "node_modules" ] && [ $FORCE_INSTALL -eq 0 ]; then
-    echo -e "  ${CHECK_MARK} Dependencies already installed (use --force to reinstall)"
+# Clean up old per-extension node_modules/pg if present
+if [ -d "$EXTENSION_TARGET/node_modules/pg" ]; then
+    echo -e "  ${INFO} Removing old per-extension node_modules/pg (migrating to shared location)"
+    rm -rf "$EXTENSION_TARGET/node_modules/pg"
+fi
+
+if [ -d "$OPENCLAW_DIR/node_modules/pg" ] && [ $FORCE_INSTALL -eq 0 ]; then
+    echo -e "  ${CHECK_MARK} pg already installed in shared node_modules (use --force to reinstall)"
 else
-    NPM_INSTALL_LOG="${TMPDIR:-/tmp}/npm-install-agent-chat-$$.log"
-    echo "    Running npm install..."
-    if npm install > "$NPM_INSTALL_LOG" 2>&1; then
-        echo -e "  ${CHECK_MARK} npm install completed"
+    NPM_INSTALL_LOG="${TMPDIR:-/tmp}/npm-install-pg-shared-$$.log"
+    echo "    Running npm install pg --save in $OPENCLAW_DIR..."
+    if (cd "$OPENCLAW_DIR" && npm install pg --save) > "$NPM_INSTALL_LOG" 2>&1; then
+        echo -e "  ${CHECK_MARK} pg installed to shared $OPENCLAW_DIR/node_modules/"
         rm -f "$NPM_INSTALL_LOG"
     else
-        echo -e "  ${CROSS_MARK} npm install failed"
+        echo -e "  ${CROSS_MARK} npm install pg failed"
         echo "      Log: $NPM_INSTALL_LOG"
         tail -20 "$NPM_INSTALL_LOG"
         exit 1
@@ -1016,4 +1031,24 @@ echo ""
 if [ $VERIFICATION_WARNINGS -gt 0 ]; then
     echo "⚠️  Warnings detected. Review output above."
     echo ""
+fi
+
+# ============================================
+# Part 7: Gateway Restart (if running)
+# ============================================
+if systemctl --user is-active openclaw-gateway &>/dev/null; then
+    if [ "${NO_RESTART}" = "1" ]; then
+        echo ""
+        echo "⚠️  Gateway is running. Restart required for plugin changes to take effect:"
+        echo "   systemctl --user restart openclaw-gateway"
+    else
+        echo ""
+        echo "Restarting gateway to apply changes..."
+        if systemctl --user restart openclaw-gateway; then
+            echo "✅ Gateway restarted"
+        else
+            echo "❌ Gateway restart failed. Please restart manually:"
+            echo "   systemctl --user restart openclaw-gateway"
+        fi
+    fi
 fi
