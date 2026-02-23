@@ -3,7 +3,7 @@
 ## 1. Install Dependencies
 
 ```bash
-cd /home/nova/clawd/clawdbot-plugins/agent-chat-channel
+cd <plugin-directory>/agent-chat-channel
 npm install
 ```
 
@@ -12,7 +12,7 @@ npm install
 Connect to your PostgreSQL database and run the schema:
 
 ```bash
-psql -h localhost -U newhart -d nova_memory -f schema.sql
+psql -h localhost -U <db_user> -d <database_name> -f schema.sql
 ```
 
 Or manually:
@@ -25,38 +25,51 @@ CREATE FUNCTION notify_agent_chat() ...;
 CREATE TRIGGER agent_chat_notify ...;
 ```
 
-## 3. Configure Clawdbot
+### Required Permissions
 
-Edit your `~/.config/clawdbot/config.yaml`:
+The plugin connects via TCP using `pg.Client`, so **password authentication is required**.
+Peer auth (Unix socket) will not work.
 
-```yaml
-# Register the plugin
-plugins:
-  paths:
-    - /home/nova/clawd/clawdbot-plugins/agent-chat-channel
+Grant the following permissions to your database user:
 
-# Configure agent_chat channel
-channels:
-  agent_chat:
-    enabled: true
-    database: nova_memory
-    host: localhost
-    user: newhart
-    password: op://NOVA Shared Vault/Agent DB: newhart/password
+```sql
+GRANT SELECT, INSERT ON agent_chat TO <db_user>;
+GRANT USAGE, SELECT ON SEQUENCE agent_chat_id_seq TO <db_user>;
 ```
+
+## 3. Configure OpenClaw
+
+Edit your `openclaw.json` (or equivalent config):
+
+```json
+{
+  "channels": {
+    "agent_chat": {
+      "enabled": true,
+      "database": "<database_name>",
+      "host": "localhost",
+      "port": 5432,
+      "user": "<db_user>",
+      "password": "<db_password>"
+    }
+  }
+}
+```
+
+**Important:** The `password` field must not be empty. The plugin's configuration check requires a truthy password value. Store credentials securely using your preferred secrets management solution.
 
 See `example-config.yaml` for more options.
 
-## 4. Restart Clawdbot Gateway
+## 4. Restart Gateway
 
 ```bash
-clawdbot gateway restart
+openclaw gateway restart
 ```
 
 ## 5. Verify Plugin Loaded
 
 ```bash
-clawdbot gateway status
+openclaw gateway status
 ```
 
 Look for `agent_chat` in the channels list.
@@ -65,7 +78,7 @@ Look for `agent_chat` in the channels list.
 
 ```sql
 INSERT INTO agent_chat (channel, sender, message, mentions)
-VALUES ('test', 'you', 'Hello @newhart!', ARRAY['newhart']);
+VALUES ('test', 'your_name', 'Hello @your_agent!', ARRAY['your_agent']);
 ```
 
 The agent should receive and respond to the message.
@@ -76,13 +89,13 @@ The agent should receive and respond to the message.
 
 - Check plugin path in config
 - Verify index.js exports `agentChatPlugin` or default export
-- Check gateway logs: `clawdbot gateway logs`
+- Check gateway logs: `openclaw gateway logs`
 
 ### Database connection errors
 
-- Verify credentials (test with `psql`)
+- Verify credentials work via TCP: `psql -h localhost -U <db_user> -d <database_name>`
 - Check that database and tables exist
-- Ensure 1Password reference resolves: `op read "op://NOVA Shared Vault/Agent DB: newhart/password"`
+- Ensure your password is non-empty in the config
 
 ### Messages not received
 
@@ -93,17 +106,18 @@ The agent should receive and respond to the message.
   -- In another session:
   INSERT INTO agent_chat ...;
   ```
-- Check that agent name in config matches mentions array
+- Check that the agent name in your `agents.list` config matches the mentions array in messages
 
 ### Agent not responding
 
+- Verify the database user has INSERT permission on `agent_chat` and USAGE on `agent_chat_id_seq`
 - Check session routing in logs
 - Verify agent session is active
-- Test outbound by checking agent_chat table for replies
+- Test outbound by checking the `agent_chat` table for replies
 
 ## Next Steps
 
 - Add more agents to the system
 - Set up channels for different purposes
 - Integrate with other systems via database triggers
-- Build UI on top of agent_chat table
+- Build UI on top of the agent_chat table
