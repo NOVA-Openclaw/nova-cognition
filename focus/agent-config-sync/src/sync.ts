@@ -18,12 +18,14 @@ export type AgentRow = {
   fallback_models: string[] | null;
   thinking: string | null;
   instance_type: string;
+  allowed_subagents: string[] | null;
 };
 
 type AgentListEntry = {
   id: string;
   model: string | { primary: string; fallbacks: string[] };
   thinking?: string;
+  subagents?: { allowAgents: string[] };
 };
 
 type AgentsJson = {
@@ -38,12 +40,16 @@ type AgentsJson = {
 // ── SQL ─────────────────────────────────────────────────────────────────────
 
 const AGENTS_QUERY = `
-  SELECT name, model, fallback_models, thinking, instance_type
+  SELECT name, model, fallback_models, thinking, instance_type, allowed_subagents
   FROM agents
   WHERE instance_type IN ('primary', 'subagent')
     AND model IS NOT NULL
   ORDER BY name;
 `;
+
+// NOTE: Trigger dependency — Newhart needs to run:
+// ALTER the notify_agent_config_changed() function to include:
+// OR OLD.allowed_subagents IS DISTINCT FROM NEW.allowed_subagents
 
 // ── Build ───────────────────────────────────────────────────────────────────
 
@@ -79,6 +85,11 @@ export function buildAgentsJson(rows: AgentRow[]): AgentsJson {
     // Note: 'thinking' is not a valid per-agent config key in OpenClaw's schema.
     // Thinking level is set at spawn time via sessions_spawn(thinking=...), not in agent definitions.
     // The DB 'thinking' column stores the preferred level for reference, but it's not written to agents.json.
+
+    // Include subagents.allowAgents if set
+    if (Array.isArray(row.allowed_subagents) && row.allowed_subagents.length > 0) {
+      entry.subagents = { allowAgents: [...row.allowed_subagents].sort() };
+    }
 
     list.push(entry);
   }
