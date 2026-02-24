@@ -1010,6 +1010,80 @@ else
     echo -e "  ${WARNING} Agent config sync source not found (skipping)"
 fi
 
+# ── Ensure agent_system_config table exists ──
+echo ""
+echo "  Ensuring agent_system_config table exists..."
+
+psql -U "$DB_USER" -d "$DB_NAME" -q <<'SYSTEM_CONFIG_TABLE_SQL'
+CREATE TABLE IF NOT EXISTS agent_system_config (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    value_type TEXT NOT NULL DEFAULT 'text',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+SYSTEM_CONFIG_TABLE_SQL
+
+if [ $? -eq 0 ]; then
+    echo -e "  ${CHECK_MARK} agent_system_config table ready"
+else
+    echo -e "  ${WARNING} Could not ensure agent_system_config table exists"
+fi
+
+# ── Apply system_config trigger migration ──
+echo "  Installing system config notification trigger..."
+
+SYSTEM_CONFIG_MIGRATION="$SCRIPT_DIR/scripts/migrations/163-system-config-trigger.sql"
+if [ -f "$SYSTEM_CONFIG_MIGRATION" ]; then
+    MIGRATION_ERR="${TMPDIR:-/tmp}/migration-163-$$.err"
+    if psql -U "$DB_USER" -d "$DB_NAME" -q -f "$SYSTEM_CONFIG_MIGRATION" 2>"$MIGRATION_ERR"; then
+        echo -e "  ${CHECK_MARK} System config trigger installed (163-system-config-trigger.sql)"
+        rm -f "$MIGRATION_ERR"
+    else
+        echo -e "  ${WARNING} System config trigger migration had issues:"
+        cat "$MIGRATION_ERR" >&2
+        rm -f "$MIGRATION_ERR"
+    fi
+else
+    # Inline fallback if migration file is not present
+    echo -e "  ${INFO} Migration file not found, applying inline..."
+    psql -U "$DB_USER" -d "$DB_NAME" -q <<'INLINE_MIGRATION_SQL'
+CREATE OR REPLACE FUNCTION notify_system_config_changed()
+RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        PERFORM pg_notify('agent_config_changed', json_build_object(
+            'source', 'agent_system_config',
+            'key', OLD.key,
+            'operation', TG_OP
+        )::text);
+        RETURN OLD;
+    END IF;
+    PERFORM pg_notify('agent_config_changed', json_build_object(
+        'source', 'agent_system_config',
+        'key', NEW.key,
+        'operation', TG_OP
+    )::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS system_config_changed ON agent_system_config;
+CREATE TRIGGER system_config_changed
+    AFTER INSERT OR UPDATE OR DELETE ON agent_system_config
+    FOR EACH ROW EXECUTE FUNCTION notify_system_config_changed();
+
+INSERT INTO agent_system_config (key, value, value_type)
+VALUES ('max_spawn_depth', '5', 'integer')
+ON CONFLICT (key) DO NOTHING;
+INLINE_MIGRATION_SQL
+    if [ $? -eq 0 ]; then
+        echo -e "  ${CHECK_MARK} System config trigger installed (inline)"
+    else
+        echo -e "  ${WARNING} Inline migration had issues — check output above"
+    fi
+fi
+
 # ── Install/update DB trigger for agent_config_sync ──
 echo ""
 echo "  Installing agent config notification trigger..."
