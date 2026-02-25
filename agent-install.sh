@@ -900,7 +900,7 @@ if [ -d "$AGENT_CONFIG_SYNC_SOURCE" ]; then
     # - Preserve all agents.defaults — do NOT touch them
     # - Do NOT add $include at root level or at agents level
     if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
-        EXISTING_LIST_INCLUDE=$(jq -r '.agents.list["$include"] // empty' "$OPENCLAW_CONFIG" 2>/dev/null)
+        EXISTING_LIST_INCLUDE=$(jq -r '.agents.list["$include"] // empty' "$OPENCLAW_CONFIG" 2>/dev/null || true)
         if [ -n "$EXISTING_LIST_INCLUDE" ]; then
             echo -e "  ${CHECK_MARK} agents.list already uses \$include: $EXISTING_LIST_INCLUDE"
         else
