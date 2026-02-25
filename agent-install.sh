@@ -893,17 +893,22 @@ if [ -d "$AGENT_CONFIG_SYNC_SOURCE" ]; then
         echo -e "  ${WARNING} Cannot enable plugin (missing config or jq)"
     fi
 
-    # Add "$include": "./agents.json" to openclaw.json if not already present
+    # Set agents.list to { "$include": "./agents.json" } in openclaw.json
+    # - If agents.list already has $include, leave it (idempotent)
+    # - If agents.list is an inline array, replace it with $include
+    # - If agents.list is missing, create it
+    # - Preserve all agents.defaults — do NOT touch them
+    # - Do NOT add $include at root level or at agents level
     if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
-        EXISTING_INCLUDE=$(jq -r '.["$include"] // empty' "$OPENCLAW_CONFIG" 2>/dev/null)
-        if [ -z "$EXISTING_INCLUDE" ]; then
-            echo "  Adding \$include directive for agents.json..."
-            jq '.["$include"] = "./agents.json"' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
-                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
-                echo -e "  ${CHECK_MARK} Added \"\$include\": \"./agents.json\" to openclaw.json" || \
-                echo -e "  ${WARNING} Could not add \$include directive"
+        EXISTING_LIST_INCLUDE=$(jq -r '.agents.list["$include"] // empty' "$OPENCLAW_CONFIG" 2>/dev/null)
+        if [ -n "$EXISTING_LIST_INCLUDE" ]; then
+            echo -e "  ${CHECK_MARK} agents.list already uses \$include: $EXISTING_LIST_INCLUDE"
         else
-            echo -e "  ${CHECK_MARK} \$include already configured: $EXISTING_INCLUDE"
+            echo "  Setting agents.list to { \"\$include\": \"./agents.json\" }..."
+            jq '.agents.list = { "$include": "./agents.json" }' "$OPENCLAW_CONFIG" > "$OPENCLAW_CONFIG.tmp" && \
+                mv "$OPENCLAW_CONFIG.tmp" "$OPENCLAW_CONFIG" && \
+                echo -e "  ${CHECK_MARK} Set agents.list = { \"\$include\": \"./agents.json\" } in openclaw.json" || \
+                echo -e "  ${WARNING} Could not set agents.list \$include directive"
         fi
     fi
 
@@ -947,64 +952,74 @@ if [ -d "$AGENT_CONFIG_SYNC_SOURCE" ]; then
     AGENTS_JSON="$OPENCLAW_DIR/agents.json"
     AGENTS_JSON_TMP="${AGENTS_JSON}.tmp.$$"
     
+    # Build a bare array: non-peer agents with model set, sorted by name.
+    # - is_default = true → include "default": true (omit key otherwise)
+    # - fallback_models non-empty → object form; NULL or empty → string form
+    # - thinking excluded from output
+    # - allowed_subagents non-empty → include subagents.allowAgents (sorted)
     INITIAL_SYNC_QUERY="
-        SELECT json_build_object(
-            'agents', json_build_object(
-                'defaults', json_build_object(
-                    'models', (
-                        SELECT COALESCE(json_object_agg(m, '{}'::json ORDER BY m), '{}'::json)
-                        FROM (
-                            SELECT DISTINCT unnest(
-                                ARRAY[model] || COALESCE(fallback_models, ARRAY[]::text[])
-                            ) AS m
-                            FROM agents
-                            WHERE instance_type IN ('primary', 'subagent')
-                              AND model IS NOT NULL
-                        ) sub
-                    )
-                ),
-                'list', COALESCE((
-                    SELECT json_agg(
-                        CASE
-                            WHEN fallback_models IS NOT NULL AND array_length(fallback_models, 1) > 0 THEN
-                                json_build_object(
-                                    'id', name,
-                                    'model', json_build_object(
-                                        'primary', model,
-                                        'fallbacks', to_json(fallback_models)
-                                    )
-                                ) || CASE WHEN thinking IS NOT NULL THEN json_build_object('thinking', thinking) ELSE '{}'::json END
-                            ELSE
-                                json_build_object('id', name, 'model', model)
-                                || CASE WHEN thinking IS NOT NULL THEN json_build_object('thinking', thinking) ELSE '{}'::json END
-                        END
-                        ORDER BY name
-                    )
-                    FROM agents
-                    WHERE instance_type IN ('primary', 'subagent')
-                      AND model IS NOT NULL
-                ), '[]'::json)
-            )
+        SELECT COALESCE(
+            json_agg(entry ORDER BY (entry->>'id'))::text,
+            '[]'
         )
+        FROM (
+            SELECT
+                CASE
+                    WHEN fallback_models IS NOT NULL AND array_length(fallback_models, 1) > 0 THEN
+                        jsonb_strip_nulls(jsonb_build_object(
+                            'id', name
+                        ) ||
+                        CASE WHEN is_default = true THEN jsonb_build_object('default', true) ELSE '{}'::jsonb END
+                        || jsonb_build_object(
+                            'model', jsonb_build_object(
+                                'primary', model,
+                                'fallbacks', to_jsonb(fallback_models)
+                            )
+                        ) ||
+                        CASE
+                            WHEN allowed_subagents IS NOT NULL AND array_length(allowed_subagents, 1) > 0
+                            THEN jsonb_build_object('subagents', jsonb_build_object(
+                                'allowAgents', (SELECT jsonb_agg(s ORDER BY s) FROM unnest(allowed_subagents) s)
+                            ))
+                            ELSE '{}'::jsonb
+                        END)
+                    ELSE
+                        jsonb_strip_nulls(jsonb_build_object(
+                            'id', name
+                        ) ||
+                        CASE WHEN is_default = true THEN jsonb_build_object('default', true) ELSE '{}'::jsonb END
+                        || jsonb_build_object('model', model) ||
+                        CASE
+                            WHEN allowed_subagents IS NOT NULL AND array_length(allowed_subagents, 1) > 0
+                            THEN jsonb_build_object('subagents', jsonb_build_object(
+                                'allowAgents', (SELECT jsonb_agg(s ORDER BY s) FROM unnest(allowed_subagents) s)
+                            ))
+                            ELSE '{}'::jsonb
+                        END)
+                END AS entry
+            FROM agents
+            WHERE instance_type != 'peer'
+              AND model IS NOT NULL
+        ) sub
     "
-    
+
     if AGENTS_DATA=$(psql -U "$DB_USER" -d "$DB_NAME" -tAc "$INITIAL_SYNC_QUERY" 2>/dev/null); then
         if [ -n "$AGENTS_DATA" ] && [ "$AGENTS_DATA" != "null" ]; then
             echo "$AGENTS_DATA" | jq '.' > "$AGENTS_JSON_TMP" 2>/dev/null && \
                 mv "$AGENTS_JSON_TMP" "$AGENTS_JSON" && \
-                echo -e "  ${CHECK_MARK} Generated initial agents.json from DB" || \
+                echo -e "  ${CHECK_MARK} Generated initial agents.json from DB (bare array)" || \
                 { echo -e "  ${WARNING} Could not write agents.json"; rm -f "$AGENTS_JSON_TMP"; }
         else
-            # Write empty but valid agents.json
-            echo '{"agents":{"defaults":{"models":{}},"list":[]}}' | jq '.' > "$AGENTS_JSON_TMP" && \
+            # Write empty but valid agents.json (bare array)
+            echo '[]' > "$AGENTS_JSON_TMP" && \
                 mv "$AGENTS_JSON_TMP" "$AGENTS_JSON" && \
                 echo -e "  ${CHECK_MARK} Generated empty agents.json (no agents in DB)" || \
                 { echo -e "  ${WARNING} Could not write agents.json"; rm -f "$AGENTS_JSON_TMP"; }
         fi
     else
         echo -e "  ${WARNING} Could not query DB for initial agents.json (will be generated on gateway start)"
-        # Write empty but valid agents.json as fallback
-        echo '{"agents":{"defaults":{"models":{}},"list":[]}}' | jq '.' > "$AGENTS_JSON" 2>/dev/null || true
+        # Write empty but valid agents.json as fallback (bare array)
+        echo '[]' > "$AGENTS_JSON" 2>/dev/null || true
     fi
 else
     echo -e "  ${WARNING} Agent config sync source not found (skipping)"
@@ -1092,28 +1107,12 @@ psql -U "$DB_USER" -d "$DB_NAME" -q <<'TRIGGER_SQL'
 CREATE OR REPLACE FUNCTION notify_agent_config_changed()
 RETURNS trigger AS $$
 BEGIN
-    IF TG_OP = 'DELETE' THEN
-        PERFORM pg_notify('agent_config_changed', json_build_object(
-            'agent_id', OLD.id,
-            'agent_name', OLD.name,
-            'operation', TG_OP
-        )::text);
-        RETURN OLD;
-    END IF;
-
-    IF TG_OP = 'INSERT' OR
-       OLD.model IS DISTINCT FROM NEW.model OR
-       OLD.fallback_models IS DISTINCT FROM NEW.fallback_models OR
-       OLD.thinking IS DISTINCT FROM NEW.thinking OR
-       OLD.instance_type IS DISTINCT FROM NEW.instance_type OR
-       OLD.allowed_subagents IS DISTINCT FROM NEW.allowed_subagents THEN
-        PERFORM pg_notify('agent_config_changed', json_build_object(
-            'agent_id', NEW.id,
-            'agent_name', NEW.name,
-            'operation', TG_OP
-        )::text);
-    END IF;
-    RETURN NEW;
+    PERFORM pg_notify('agent_config_changed', json_build_object(
+        'agent_id', COALESCE(NEW.id, OLD.id),
+        'agent_name', COALESCE(NEW.name, OLD.name),
+        'operation', TG_OP
+    )::text);
+    RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql;
 

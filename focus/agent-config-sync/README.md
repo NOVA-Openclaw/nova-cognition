@@ -2,12 +2,13 @@
 
 An OpenClaw extension plugin that keeps `~/.openclaw/agents.json` in sync with your PostgreSQL database — automatically and in real time.
 
-It watches two DB tables:
+It watches the `agents` DB table:
 
-- **`agents`** — agent definitions (model, fallback models, allowed subagents)
-- **`agent_system_config`** — system-wide defaults (e.g. `maxSpawnDepth`)
+- **`agents`** — agent definitions (model, fallback models, allowed subagents, default flag)
 
-When either table changes, the plugin receives a PostgreSQL `NOTIFY` event, rebuilds `agents.json`, writes it atomically, and signals the gateway to reload (`SIGUSR1`).
+When the table changes, the plugin receives a PostgreSQL `NOTIFY` event, rebuilds `agents.json` as a **bare JSON array**, writes it atomically, and signals the gateway to reload (`SIGUSR1`).
+
+> **Note:** The `agent_system_config` table still exists and is used by the gateway, but its values (e.g. `maxSpawnDepth`) are stored directly in `openclaw.json` — they are **not** written to `agents.json`.
 
 ---
 
@@ -17,9 +18,9 @@ When either table changes, the plugin receives a PostgreSQL `NOTIFY` event, rebu
 DB change
   └─► trigger fires pg_notify('agent_config_changed')
         └─► plugin receives notification (LISTEN)
-              └─► queries agents + agent_system_config
-                    └─► builds agents.json
-                          └─► atomic write (tmp + rename)
+              └─► queries agents WHERE instance_type != 'peer'
+                    └─► builds bare JSON array
+                          └─► atomic write (tmp + rename) → agents.json
                                 └─► SIGUSR1 → gateway hot-reload
 ```
 
@@ -27,9 +28,90 @@ On startup the plugin performs an **initial sync** so `agents.json` is always fr
 
 ---
 
+## Output Format
+
+`agents.json` is a **bare JSON array** of agent entries. There is no wrapping object.
+
+### Example output
+
+```json
+[
+  {
+    "id": "main",
+    "default": true,
+    "model": {
+      "primary": "openrouter/anthropic/claude-opus-4-6",
+      "fallbacks": [
+        "openrouter/anthropic/claude-sonnet-4-6"
+      ]
+    },
+    "subagents": {
+      "allowAgents": ["coder", "researcher"]
+    }
+  },
+  {
+    "id": "coder",
+    "model": "openrouter/anthropic/claude-sonnet-4-6"
+  },
+  {
+    "id": "researcher",
+    "model": "openrouter/anthropic/claude-sonnet-4-6"
+  }
+]
+```
+
+### Entry fields
+
+| Field | Source | Notes |
+|---|---|---|
+| `id` | `agents.name` | Always present |
+| `default` | `agents.is_default` | `true` only when `is_default = true`; key **omitted** otherwise |
+| `model` | `agents.model` + `agents.fallback_models` | String when no fallbacks; object `{ primary, fallbacks }` when fallbacks present |
+| `subagents.allowAgents` | `agents.allowed_subagents` | Included when non-empty, sorted alphabetically |
+
+**Not included in output:**
+- Models allowlist (`agents.defaults.models`) — stays in `openclaw.json`
+- System defaults (`agents.defaults.subagents`) — stays in `openclaw.json`
+
+---
+
+## How agents.json Is Loaded
+
+`openclaw.json` uses `$include` at the **`agents.list`** level to load the array:
+
+```json
+{
+  "agents": {
+    "list": { "$include": "./agents.json" },
+    "defaults": {
+      "subagents": {
+        "maxSpawnDepth": 3
+      }
+    }
+  }
+}
+```
+
+The `$include` directive splices the bare array directly into `agents.list`. All other `agents.*` keys (defaults, etc.) remain in `openclaw.json` and are unaffected by syncs.
+
+---
+
+## DB Filter
+
+Only non-peer agents are synced:
+
+```sql
+WHERE instance_type != 'peer'
+  AND model IS NOT NULL
+```
+
+Peer agents (connected remote instances) are excluded — they are managed dynamically by the gateway, not via `agents.json`.
+
+---
+
 ## agent_system_config Table
 
-This table stores system-wide configuration that applies as defaults for all agents.
+This table exists and stores system-wide configuration, but its values are **not synced to `agents.json`**. They are applied directly to `openclaw.json` at install time and managed there.
 
 ### Schema
 
@@ -43,149 +125,61 @@ CREATE TABLE agent_system_config (
 );
 ```
 
-| Column       | Type        | Description                                       |
-|--------------|-------------|---------------------------------------------------|
-| `key`        | TEXT (PK)   | Config key name (see supported keys below)        |
-| `value`      | TEXT        | Config value, always stored as text               |
-| `value_type` | TEXT        | Type hint used for casting: `'integer'`, `'text'` |
-| `created_at` | TIMESTAMPTZ | Row creation timestamp                            |
-| `updated_at` | TIMESTAMPTZ | Last update timestamp                             |
-
 ### Supported Keys
 
-| DB key                     | JSON path                              | value_type | Valid range | Notes                                |
-|----------------------------|----------------------------------------|------------|-------------|--------------------------------------|
-| `max_spawn_depth`          | `agents.defaults.subagents.maxSpawnDepth` | `integer`  | 1–5         | Maximum depth for nested subagent chains. Clamped to 1–5 by the plugin. |
-| `max_concurrent_subagents` | `agents.defaults.subagents.maxConcurrent` | `integer`  | —           | **Future** — not yet mapped. Reserved for forward compatibility. |
-
-Unknown keys are silently ignored (whitelist approach). Invalid values (type mismatches, non-integer strings) are logged as warnings and skipped — the plugin never crashes on bad data.
-
-### Example
-
-```sql
--- Set max spawn depth to 3
-UPDATE agent_system_config SET value = '3' WHERE key = 'max_spawn_depth';
-```
-
-This automatically propagates to `agents.json`:
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "subagents": {
-        "maxSpawnDepth": 3
-      }
-    }
-  }
-}
-```
-
----
-
-## Configuration Layering
-
-Config values flow through layers, with **DB always winning** over file defaults:
-
-```
-1. Installer default (openclaw.json)          ← lowest priority
-2. Plugin reads DB (agent_system_config)
-3. Plugin writes agents.json
-4. openclaw.json $include deep-merges agents.json  ← DB values win
-```
-
-This means:
-- You can set baseline defaults in `openclaw.json` (e.g. `maxConcurrent: 5`)
-- The sync plugin overlays DB values on top
-- DB values always take precedence after the merge
-
-### Example: $include deep merge
-
-`openclaw.json`:
-```json
-{
-  "$include": "./agents.json",
-  "agents": {
-    "defaults": {
-      "subagents": {
-        "maxConcurrent": 5
-      }
-    }
-  }
-}
-```
-
-`agent_system_config` DB: `max_spawn_depth = 4`
-
-Result after merge:
-```json
-{
-  "agents": {
-    "defaults": {
-      "subagents": {
-        "maxConcurrent": 5,
-        "maxSpawnDepth": 4
-      }
-    }
-  }
-}
-```
+| DB key | JSON path | value_type | Notes |
+|---|---|---|---|
+| `max_spawn_depth` | `agents.defaults.subagents.maxSpawnDepth` | `integer` | Set in `openclaw.json`, not in `agents.json` |
+| `max_concurrent_subagents` | `agents.defaults.subagents.maxConcurrent` | `integer` | Reserved for future use |
 
 ---
 
 ## Notification Flow
 
-Changes in `agent_system_config` (INSERT / UPDATE / DELETE) trigger real-time syncs via PostgreSQL's `LISTEN/NOTIFY`:
+The `agents` table has an unconditional trigger that fires on **any row change** (INSERT, UPDATE, or DELETE on any column):
 
 ```
-DB UPDATE agent_system_config SET value = '3' WHERE key = 'max_spawn_depth'
+DB INSERT / UPDATE / DELETE on agents
   │
-  └─► trigger: notify_system_config_changed()
+  └─► trigger: notify_agent_config_changed()
         │
-        └─► pg_notify('agent_config_changed', '{"source":"agent_system_config","key":"max_spawn_depth","operation":"UPDATE"}')
+        └─► pg_notify('agent_config_changed', '{"agent_id":..., "operation":"UPDATE"}')
               │
               └─► plugin receives notification
                     │
-                    └─► syncAgentsConfig() — re-queries both tables
+                    └─► syncAgentsConfig()
                           │
-                          └─► atomic write to agents.json
+                          ├─► SELECT WHERE instance_type != 'peer'
+                          │
+                          └─► atomic write → agents.json
                                 │
-                                └─► process.kill(process.pid, 'SIGUSR1')
-                                      │
-                                      └─► gateway hot-reload
+                                └─► SIGUSR1 → gateway hot-reload
 ```
-
-The same `agent_config_changed` channel is shared with the `agents` table trigger, so any change to either table triggers a full re-sync.
 
 ### SQL Trigger
 
-Installed by `agent-install.sh` and `scripts/migrations/163-system-config-trigger.sql`:
+The trigger is unconditional — it fires on any change to any column:
 
 ```sql
-CREATE OR REPLACE FUNCTION notify_system_config_changed()
+CREATE OR REPLACE FUNCTION notify_agent_config_changed()
 RETURNS trigger AS $$
 BEGIN
-    IF TG_OP = 'DELETE' THEN
-        PERFORM pg_notify('agent_config_changed', json_build_object(
-            'source', 'agent_system_config',
-            'key', OLD.key,
-            'operation', TG_OP
-        )::text);
-        RETURN OLD;
-    END IF;
     PERFORM pg_notify('agent_config_changed', json_build_object(
-        'source', 'agent_system_config',
-        'key', NEW.key,
+        'agent_id', COALESCE(NEW.id, OLD.id),
+        'agent_name', COALESCE(NEW.name, OLD.name),
         'operation', TG_OP
     )::text);
-    RETURN NEW;
+    RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER system_config_changed
-    AFTER INSERT OR UPDATE OR DELETE ON agent_system_config
-    FOR EACH ROW EXECUTE FUNCTION notify_system_config_changed();
+DROP TRIGGER IF EXISTS agent_config_changed ON agents;
+CREATE TRIGGER agent_config_changed
+    AFTER INSERT OR UPDATE OR DELETE ON agents
+    FOR EACH ROW EXECUTE FUNCTION notify_agent_config_changed();
 ```
+
+> **Why unconditional?** Previously the trigger only fired when specific columns changed (model, fallback_models, etc.). Now that `is_default` and `allowed_subagents` are also synced, the trigger fires on any change and lets the plugin decide what to write. This avoids missed updates when new columns are added.
 
 ---
 
@@ -193,9 +187,10 @@ CREATE TRIGGER system_config_changed
 
 The installer (`agent-install.sh`) handles everything automatically:
 
-1. Creates the `agent_system_config` table (if it doesn't exist)
-2. Applies `scripts/migrations/163-system-config-trigger.sql` (idempotent)
-3. Seeds `max_spawn_depth = 5` (ON CONFLICT DO NOTHING — won't overwrite existing values)
+1. Installs and builds the `agent_config_sync` extension plugin
+2. Sets `agents.list = { "$include": "./agents.json" }` in `openclaw.json`
+3. Installs the `notify_agent_config_changed()` trigger on the `agents` table
+4. Generates the initial `agents.json` from current DB state
 
 To run manually:
 
@@ -248,6 +243,7 @@ focus/agent-config-sync/
 
 ## Key Behaviours
 
+- **Bare array output**: `agents.json` is a plain JSON array, not a wrapped object
 - **Atomic writes**: Uses a tmp file + rename to prevent partial reads during write
 - **Idempotent sync**: Compares new content to existing file — skips write if identical
 - **Graceful error handling**: Invalid DB values are warned about and skipped, never crash
