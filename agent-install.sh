@@ -353,13 +353,14 @@ verify_database() {
         VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + ${#missing_tables[@]}))
     fi
     
-    # Check bootstrap_context tables
-    BOOTSTRAP_TABLES=$(psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'bootstrap_context%'" | tr -d '[:space:]')
+    # Check agent_bootstrap_context table (canonical bootstrap context)
+    BOOTSTRAP_TABLE=$(psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'agent_bootstrap_context'" | tr -d '[:space:]')
     
-    if [ "$BOOTSTRAP_TABLES" -ge 4 ]; then
-        echo -e "  ${CHECK_MARK} Bootstrap context tables installed ($BOOTSTRAP_TABLES/4)"
+    if [ "$BOOTSTRAP_TABLE" -ge 1 ]; then
+        BOOTSTRAP_ROWS=$(psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT COUNT(*) FROM agent_bootstrap_context" | tr -d '[:space:]')
+        echo -e "  ${CHECK_MARK} Bootstrap context table installed ($BOOTSTRAP_ROWS rows)"
     else
-        echo -e "  ${WARNING} Bootstrap context tables incomplete ($BOOTSTRAP_TABLES/4)"
+        echo -e "  ${WARNING} agent_bootstrap_context table not found"
         VERIFICATION_WARNINGS=$((VERIFICATION_WARNINGS + 1))
     fi
     
