@@ -4,16 +4,66 @@ Automatic agent context loading from PostgreSQL database with file fallbacks.
 
 ## Overview
 
-OpenClaw agents normally load context from workspace files (AGENTS.md, SOUL.md, etc.). This system replaces that with **database-backed context** that can be updated without touching the filesystem.
+OpenClaw agents normally load context from workspace files. This system replaces that with **database-backed context** that can be updated without touching the filesystem, with per-agent customization based on domains and roles.
 
-## Key Features
+## Context Types
 
-- **Database-first**: Context stored in `nova_memory` database
-- **Per-agent customization**: Universal + agent-specific context
-- **Three-tier fallback**: Database → static files → emergency minimal context
-- **SQL management interface**: Safe functions for updates
-- **Audit trail**: Track all context changes
-- **Hook-based**: Intercepts `agent:bootstrap` event transparently
+All context is stored in a single table: `agent_bootstrap_context`.
+
+### UNIVERSAL
+
+Context injected into **every agent** regardless of identity or domain.
+
+- Core infrastructure principles
+- Workspace paths, database access, communication patterns
+
+There should be very little here — only truly universal operating principles.
+
+### GLOBAL
+
+Context injected into **every agent**. System-wide rules and architecture.
+
+- Coordination rules (check before starting, use SE workflow, document handoffs)
+- System context (shared resources, communication patterns)
+
+### DOMAIN
+
+Context injected into agents **based on their domain assignments** (via `agent_domains` table). Any agent assigned to a domain receives that domain's context.
+
+- **Software Engineering** — coding practices, testing requirements, development standards, issue-driven development, programming best practices
+- **Technical Writing** — documentation standards, style guides
+- **Version Control** — git operations, repo templates, schema sync
+- **Information Security** — security principles, audit procedures
+- **Systems Administration** — sysadmin context, infrastructure principles
+- **OpenClaw Development** — OpenClaw-specific config and development practices
+- **Library** — library workflow, database reference
+- etc.
+
+**Key principle:** If knowledge applies to a _domain_ rather than a specific agent, it belongs in a DOMAIN record. Multiple agents can share a domain. When a new agent is assigned to a domain, they automatically inherit all domain knowledge.
+
+### WORKFLOW
+
+Workflow context is **dynamically generated** by the `get_agent_bootstrap()` function from the `workflows` and `workflow_steps` tables. Agents receive full workflow definitions for any workflow they participate in, matched by domain overlap.
+
+**⚠️ Never store workflow summaries as static entries.** They will go stale. The function builds current workflow content on every call.
+
+### AGENT
+
+Context injected into a **specific named agent only**. This is the only context type matched by agent name.
+
+**AGENT records should contain identity context only:**
+- Who the agent is (name, role, personality, vibe)
+- What the agent's scope is (what they do and don't do)
+- How the agent communicates (tone, style)
+- Key tools specific to this agent (not domain tools)
+
+**AGENT records should NOT contain:**
+- Domain knowledge (use DOMAIN records)
+- Workflow definitions (generated dynamically)
+- Coding practices, documentation standards, etc. (these are domain knowledge)
+- Static workflow summaries or snapshots (will go stale)
+
+If you're adding context and thinking "any agent working in X domain would need this" — it's a DOMAIN record, not an AGENT record.
 
 ## Architecture
 
@@ -22,9 +72,17 @@ Agent Spawn Request
         ↓
 agent:bootstrap event fires
         ↓
-Hook intercepts event
+db-bootstrap-context hook intercepts
         ↓
-Query: get_agent_bootstrap(agent_name)
+get_agent_bootstrap(agent_name)
+        ↓
+┌─────────────────────────────────────────┐
+│ 1. UNIVERSAL records (all agents)       │
+│ 2. GLOBAL records (all agents)          │
+│ 3. DOMAIN records (by agent_domains)    │
+│ 4. WORKFLOW records (by domain overlap) │  ← dynamically generated
+│ 5. AGENT records (by agent name)        │
+└─────────────────────────────────────────┘
         ↓
     ┌─── Database available? ───┐
     │                           │
@@ -32,108 +90,92 @@ Query: get_agent_bootstrap(agent_name)
     │                           │
     ↓                           ↓
 Return DB context      Try fallback files
+    │                  (~/.openclaw/bootstrap-fallback/)
     │                           │
-    └──────────┬────────────────┘
+    │                  ┌── Found? ──┐
+    │                  │            │
+    │                 YES          NO
+    │                  │            │
+    │                  ↓            ↓
+    │           Return files   Emergency context
+    └──────────┬────────────────────┘
                ↓
     Inject into event.context.bootstrapFiles
                ↓
     Agent starts with loaded context
 ```
 
-## Installation
+## Domain Assignment
 
-```bash
-cd ~/clawd/nova-cognition/bootstrap-context
-./install.sh
-```
-
-This installs:
-- Database tables and functions
-- OpenClaw hook at `~/.openclaw/hooks/db-bootstrap-context/`
-- Fallback files at `~/.openclaw/bootstrap-fallback/`
-
-## Usage
-
-### Managing Universal Context
-
-Context that applies to all agents:
+Agents receive DOMAIN context based on their entries in the `agent_domains` table:
 
 ```sql
--- Update AGENTS.md
-SELECT update_universal_context('AGENTS', $content$
-# AGENTS.md
-...
-$content$, 'Agent roster', 'newhart');
+-- See which domains an agent is assigned to
+SELECT domain_topic FROM agent_domains ad
+JOIN agents a ON a.id = ad.agent_id
+WHERE a.name = 'coder';
 
--- Update SOUL.md
-SELECT update_universal_context('SOUL', $content$
-# SOUL.md
-...
-$content$, 'System soul', 'newhart');
+-- See which agents are in a domain
+SELECT a.name FROM agents a
+JOIN agent_domains ad ON a.id = ad.agent_id
+WHERE ad.domain_topic = 'Software Engineering';
 ```
 
-### Managing Agent-Specific Context
+## Database Schema
 
-Context for individual agents:
+### Table: `agent_bootstrap_context`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | serial | Primary key |
+| `context_type` | text | `UNIVERSAL`, `GLOBAL`, `DOMAIN`, `AGENT` |
+| `agent_name` | text | Agent name (AGENT type only, NULL otherwise) |
+| `domain_name` | text | Domain name (DOMAIN type only, NULL otherwise) |
+| `file_key` | text | Identifier (becomes `{file_key}.md` in output) |
+| `content` | text | The actual context content |
+| `description` | text | Human-readable description |
+| `updated_by` | text | Who last modified this entry |
+| `updated_at` | timestamptz | Last modification time |
+
+### Function: `get_agent_bootstrap(agent_name text)`
+
+Returns all context for an agent:
 
 ```sql
--- Update Coder's seed context
-SELECT update_agent_context('coder', 'SEED_CONTEXT', $content$
-# Coder Seed Context
-...
-$content$, 'Coder domain knowledge', 'newhart');
-
--- Update Scout's seed context
-SELECT update_agent_context('scout', 'SEED_CONTEXT', $content$
-# Scout Seed Context
-...
-$content$, 'Scout domain knowledge', 'newhart');
+SELECT source, filename, content FROM get_agent_bootstrap('coder');
 ```
 
-### Listing Context
+Sources returned:
+- `universal` — UNIVERSAL records
+- `global` — GLOBAL records
+- `domain:<name>` — DOMAIN records matched by agent_domains
+- `workflow:<name>` — dynamically generated from workflows + workflow_steps
+- `agent` — AGENT records matched by name
 
-```sql
--- See all context files
-SELECT * FROM list_all_context();
+### Supporting tables
 
--- Get context for specific agent
-SELECT * FROM get_agent_bootstrap('coder');
-```
+- `agent_domains` — Maps agents to domains (used for DOMAIN and WORKFLOW context resolution)
+- `workflows` / `workflow_steps` — Source for dynamic WORKFLOW context generation
 
-### Testing
+## Fallback System
 
-```sql
--- Check configuration
-SELECT * FROM get_bootstrap_config();
+Three-tier fallback:
+1. **Database** — Primary source via `get_agent_bootstrap()`
+2. **Static files** — `~/.openclaw/bootstrap-fallback/*.md`
+3. **Emergency context** — Minimal recovery instructions
 
--- Verify agent context loads
-SELECT filename, source, length(content) as size 
-FROM get_agent_bootstrap('test');
-```
+## Hook
 
-## Troubleshooting
+The `db-bootstrap-context` hook intercepts `agent:bootstrap` events and replaces the default filesystem-based context loading with database queries.
 
-### Database Connection Issues
+**Hook directory:** `~/.openclaw/hooks/db-bootstrap-context/`
 
-The hook manages its own database connection. Common issues:
+Required files:
+- `HOOK.md` — metadata with `metadata: {"openclaw":{"events":["agent:bootstrap"]}}`
+- `handler.ts` — hook handler
+- `package.json` — must include `"type": "module"` for ESM imports
 
-**Connection Refused (ECONNREFUSED)**
-- PostgreSQL not running: `sudo systemctl start postgresql`
-- Wrong host/port: Hook expects localhost:5432
-
-**Function Not Found (42883)**  
-- Database schema not installed: Run `./install.sh`
-- Wrong database: Hook expects `nova_memory`
-
-**Permission Denied**
-- OS user doesn't match database user
-- Add user to database: `createuser $(whoami)`
-- Or ensure 'nova' user exists in PostgreSQL
-
-**Viewing Connection Logs**
-Check OpenClaw logs for `[bootstrap-context]` messages to diagnose connection issues.
-
-The hook will fall back to static files automatically if database connection fails.
+The hook uses `loadPgEnv()` from `~/.openclaw/lib/pg-env.ts` to load database credentials from `~/.openclaw/postgres.json`.
 
 ## File Structure
 
@@ -142,54 +184,28 @@ bootstrap-context/
 ├── README.md                    # This file
 ├── install.sh                   # Installation script
 ├── schema/
-│   └── bootstrap-context.sql    # Database tables
+│   └── bootstrap-context.sql    # Database table definition
 ├── sql/
-│   ├── management-functions.sql # SQL interface
 │   └── migrate-initial-context.sql  # Import existing files
 ├── hook/
 │   ├── handler.ts               # OpenClaw hook
-│   └── HOOK.md                  # Hook metadata
+│   ├── HOOK.md                  # Hook metadata
+│   └── package.json             # ESM module config
 ├── fallback/
 │   ├── UNIVERSAL_SEED.md        # Fallback files
 │   ├── AGENTS.md
 │   ├── SOUL.md
 │   └── ...
 └── docs/
-    ├── INSTALLATION_SUMMARY.md
     └── MANAGEMENT.md
 ```
 
-## Database Schema
-
-### Tables
-
-- `bootstrap_context_universal` - Universal context (all agents)
-- `bootstrap_context_agents` - Per-agent context
-- `bootstrap_context_config` - System configuration
-- `bootstrap_context_audit` - Change audit log
-
-### Functions
-
-- `update_universal_context()` - Update universal file
-- `update_agent_context()` - Update agent-specific file
-- `get_agent_bootstrap()` - Get all files for agent
-- `copy_file_to_bootstrap()` - Migrate filesystem file to DB
-- `list_all_context()` - List all context files
-- `delete_universal_context()` - Remove universal file
-- `delete_agent_context()` - Remove agent file
-
 ## Owner
 
-**Newhart (NHR Agent)** - Non-Human Resources
+**Newhart (NHR Agent)** — Non-Human Resources
 
-This is Newhart's domain. All agent context management goes through this system.
-
-## Documentation
-
-- [Installation Summary](./docs/INSTALLATION_SUMMARY.md)
-- [Management Guide](./docs/MANAGEMENT.md)
-- [Hook Reference](./hook/HOOK.md)
+Newhart owns the `agent_bootstrap_context` table (write trigger enforced). All context management goes through Newhart.
 
 ## License
 
-MIT License - Part of nova-cognition
+MIT License — Part of nova-cognition
