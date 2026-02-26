@@ -30,7 +30,7 @@ A framework for organizing how multiple AI agents coordinate, delegate, and comm
 
 This wrapper:
 - Loads database config from `~/.openclaw/postgres.json`
-- Loads API keys from `~/.openclaw/openclaw.json` via env-loader
+- Sources `env-loader.sh` (optional — warns if missing, does not abort)
 - Sets up shell environment
 - Automatically execs `agent-install.sh`
 
@@ -42,10 +42,12 @@ This wrapper:
 This is the actual installer. It:
 - Verifies prerequisite library files from nova-memory exist
 - Verifies nova-relationships schema exists (`entity_relationships` table)
+- Validates API keys — checks `~/.openclaw/openclaw.json` first, then shell environment
 - Installs the `agent_chat` TypeScript extension to `~/.openclaw/extensions/`
 - Builds the extension (npm install, TypeScript compilation)
 - Applies the agent_chat database schema (creates tables if needed)
 - Installs skills (agent-chat, agent-spawn) and bootstrap-context hook
+- Runs `npm install` for hook dependencies if `package.json` is present
 - Configures shell environment and agent_chat channel in OpenClaw config
 - Verifies all components are working
 
