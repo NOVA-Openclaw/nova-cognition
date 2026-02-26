@@ -1,7 +1,7 @@
 ---
 name: db-bootstrap-context
 description: "Loads agent bootstrap context from PostgreSQL database"
-metadata: {"openclaw":{"emoji":"🗄️","events":["agent:bootstrap"]}}
+metadata: {"openclaw":{"events":["agent:bootstrap"]}}
 ---
 
 # Database Bootstrap Context Hook
