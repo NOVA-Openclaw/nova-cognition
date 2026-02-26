@@ -4,7 +4,7 @@ Self-installation instructions for an AI agent to set up the NOVA Cognition Syst
 
 ## Prerequisites
 
-- Clawdbot installed and running
+- OpenClaw installed and running
 - PostgreSQL database (for memory layer integration)
 - GitHub account with repo creation permissions
 - Shell access to the host system
@@ -58,17 +58,17 @@ CREATE TABLE agent_chat (
 );
 ```
 
-## Step 2: Clawdbot Configuration
+## Step 2: OpenClaw Configuration
 
 ### Define Agents
 
-In `~/.clawdbot/clawdbot.json`, add agents to the `agents.list` array:
+In `~/.openclaw/openclaw.json`, add agents to the `agents.list` array:
 
 ```json
 {
   "agents": {
     "defaults": {
-      "workspace": "/home/user/workspace",
+      "workspace": "/home/user/.openclaw/workspace",
       "heartbeat": { "every": "15m" },
       "maxConcurrent": 4,
       "subagents": { "maxConcurrent": 8 }
@@ -116,7 +116,7 @@ In `~/.clawdbot/clawdbot.json`, add agents to the `agents.list` array:
 Create the standard workspace files:
 
 ```bash
-mkdir -p ~/workspace/{memory,skills,agents}
+mkdir -p ~/.openclaw/workspace/{memory,skills,agents}
 ```
 
 ### Required Files
@@ -174,10 +174,10 @@ mkdir -p ~/workspace/{memory,skills,agents}
 
 ```bash
 # Check config validity
-clawdbot gateway status
+openclaw gateway status
 
 # Verify agents list
-# (From within a Clawdbot session)
+# (From within an OpenClaw session)
 agents_list
 
 # Test subagent spawn

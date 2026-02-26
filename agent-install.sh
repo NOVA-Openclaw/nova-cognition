@@ -24,6 +24,15 @@ fi
 # Now derive DB_USER and DB_NAME from the loaded config
 DB_USER="${PGUSER:-$(whoami)}"
 DB_NAME="${PGDATABASE:-${DB_USER//-/_}_memory}"
+
+# Validate DB connectivity (warning only — some install steps don't need DB)
+if psql -c "SELECT 1" > /dev/null 2>&1; then
+    echo -e "  \033[0;32m✓\033[0m Database connection verified"
+else
+    echo "  ⚠ Cannot connect to database '$DB_NAME' as '$DB_USER'" >&2
+    echo "      Check credentials in ~/.openclaw/postgres.json" >&2
+fi
+
 WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace-coder}"
 OPENCLAW_DIR="$HOME/.openclaw"
 OPENCLAW_PROJECTS="$OPENCLAW_DIR/projects"
@@ -105,14 +114,12 @@ for f in "${REQUIRED_LIB_FILES[@]}"; do
     fi
 done
 if [ ${#MISSING_FILES[@]} -gt 0 ]; then
-    echo "ERROR: Required library files missing from $OPENCLAW_LIB:" >&2
+    echo "WARNING: Some library files missing from $OPENCLAW_LIB:" >&2
     for f in "${MISSING_FILES[@]}"; do
         echo "  - $f" >&2
     done
-    echo "" >&2
-    echo "These files are installed by nova-memory. Please install nova-memory first:" >&2
-    echo "  cd ~/clawd/nova-memory && bash agent-install.sh" >&2
-    exit 1
+    echo "  These are installed by nova-memory. Some features may not work." >&2
+    echo "  Install nova-memory: cd ~/.openclaw/workspace/nova-memory && bash agent-install.sh" >&2
 fi
 
 # Color codes for output
@@ -493,12 +500,18 @@ GATEWAY_RESTART_NEEDED=0
 echo ""
 echo "API key configuration..."
 
-# Check if ANTHROPIC_API_KEY is set in environment
-ANTHROPIC_KEY="${ANTHROPIC_API_KEY:-}"
+# Check API key — openclaw.json is the authoritative source (gateway reads from there)
 OPENCLAW_CONFIG="$HOME/.openclaw/openclaw.json"
+ANTHROPIC_KEY=""
 
-if [ -z "$ANTHROPIC_KEY" ] && [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
+# Check openclaw.json first (authoritative source for the gateway)
+if [ -f "$OPENCLAW_CONFIG" ] && command -v jq &> /dev/null; then
     ANTHROPIC_KEY=$(jq -r '.env.vars.ANTHROPIC_API_KEY // empty' "$OPENCLAW_CONFIG" 2>/dev/null)
+fi
+
+# Fall back to shell environment variable
+if [ -z "$ANTHROPIC_KEY" ]; then
+    ANTHROPIC_KEY="${ANTHROPIC_API_KEY:-}"
 fi
 
 if [ -n "$ANTHROPIC_KEY" ]; then
@@ -790,6 +803,21 @@ BOOTSTRAP_TARGET="$OPENCLAW_DIR/hooks/db-bootstrap-context"
 if [ -d "$BOOTSTRAP_SOURCE" ]; then
     echo "  Syncing bootstrap-context files..."
     sync_directory "$BOOTSTRAP_SOURCE" "$BOOTSTRAP_TARGET" "bootstrap-context files"
+
+    # After syncing hook files, install npm dependencies if package.json exists
+    if [ -f "$BOOTSTRAP_TARGET/package.json" ]; then
+        if [ ! -d "$BOOTSTRAP_TARGET/node_modules" ] || [ $FORCE_INSTALL -eq 1 ]; then
+            echo "  Installing hook dependencies..."
+            NPM_INSTALL_LOG="${TMPDIR:-/tmp}/npm-install-hook-$$.log"
+            if (cd "$BOOTSTRAP_TARGET" && npm install) > "$NPM_INSTALL_LOG" 2>&1; then
+                echo -e "  ${CHECK_MARK} Hook dependencies installed"
+                rm -f "$NPM_INSTALL_LOG"
+            else
+                echo -e "  ${WARNING} npm install had issues (hook may use shared node_modules)"
+                rm -f "$NPM_INSTALL_LOG"
+            fi
+        fi
+    fi
 
     # Run the bootstrap-context installer for DB setup (always, it's idempotent)
     if [ -f "$BOOTSTRAP_TARGET/install.sh" ]; then
